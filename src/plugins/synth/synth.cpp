@@ -23,9 +23,9 @@ const clap_plugin_descriptor SynthPlugin::descriptor = {
     .id = "org.clap-validator.synth",
     .name = "Validator Synth",
     .vendor = "CLAP Validator Plugin Project",
-    .url = "https://github.com/defiantnerd/clap-validator-plugin",
+    .url = "https://github.com/defiantnerd/clap-validator-plugins",
     .manual_url = "",
-    .support_url = "https://github.com/defiantnerd/clap-validator-plugin/issues",
+    .support_url = "https://github.com/defiantnerd/clap-validator-plugins/issues",
     .version = "0.1.0",
     .description = "8-voice polyphonic sine synthesizer with note-ports in, stereo audio out, "
                    "params, state and voice-info. Deliberately absent: latency, tail.",

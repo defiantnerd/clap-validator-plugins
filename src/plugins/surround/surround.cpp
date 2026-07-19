@@ -72,9 +72,9 @@ const clap_plugin_descriptor SurroundPlugin::descriptor = {
     .id = "org.clap-validator.surround",
     .name = "Validator Surround",
     .vendor = "CLAP Validator Plugin Project",
-    .url = "https://github.com/defiantnerd/clap-validator-plugin",
+    .url = "https://github.com/defiantnerd/clap-validator-plugins",
     .manual_url = "",
-    .support_url = "https://github.com/defiantnerd/clap-validator-plugin/issues",
+    .support_url = "https://github.com/defiantnerd/clap-validator-plugins/issues",
     .version = "0.1.0",
     .description = "Surround passthrough with host-switchable layouts (Quad 4.0, 5.1, 7.1) via "
                    "configurable-audio-ports — mono/stereo are rejected. The Solo Channel "

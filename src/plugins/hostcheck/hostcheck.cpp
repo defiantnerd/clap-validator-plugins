@@ -17,9 +17,9 @@ const clap_plugin_descriptor HostCheckPlugin::descriptor = {
     .id = "org.clap-validator.hostcheck",
     .name = "Validator HostCheck",
     .vendor = "CLAP Validator Plugin Project",
-    .url = "https://github.com/defiantnerd/clap-validator-plugin",
+    .url = "https://github.com/defiantnerd/clap-validator-plugins",
     .manual_url = "",
-    .support_url = "https://github.com/defiantnerd/clap-validator-plugin/issues",
+    .support_url = "https://github.com/defiantnerd/clap-validator-plugins/issues",
     .version = "0.1.0",
     .description = "Probes the host: logs which host-side extensions are present, exercises "
                    "request_callback(), records every lifecycle transition. Deliberately has "

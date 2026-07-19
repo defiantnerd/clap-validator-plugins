@@ -34,9 +34,9 @@ const clap_plugin_descriptor GuiPlugin::descriptor = {
     .id = "org.clap-validator.gui",
     .name = "Validator GUI",
     .vendor = "CLAP Validator Plugin Project",
-    .url = "https://github.com/defiantnerd/clap-validator-plugin",
+    .url = "https://github.com/defiantnerd/clap-validator-plugins",
     .manual_url = "",
-    .support_url = "https://github.com/defiantnerd/clap-validator-plugin/issues",
+    .support_url = "https://github.com/defiantnerd/clap-validator-plugins/issues",
     .version = "0.1.0",
     .description = "Stereo gain effect with a framework-free native editor: editable parameters "
                    "on top, a live monospaced log of everything the plugin does (and every gui_* "

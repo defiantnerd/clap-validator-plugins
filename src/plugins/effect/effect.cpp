@@ -24,9 +24,9 @@ const clap_plugin_descriptor EffectPlugin::descriptor = {
     .id = "org.clap-validator.effect",
     .name = "Validator Effect",
     .vendor = "CLAP Validator Plugin Project",
-    .url = "https://github.com/defiantnerd/clap-validator-plugin",
+    .url = "https://github.com/defiantnerd/clap-validator-plugins",
     .manual_url = "",
-    .support_url = "https://github.com/defiantnerd/clap-validator-plugin/issues",
+    .support_url = "https://github.com/defiantnerd/clap-validator-plugins/issues",
     .version = "0.1.0",
     .description = "Stereo gain effect exposing audio-ports, params, state, latency, tail and "
                    "render — and deliberately no note-ports. The Latency parameter changes the "

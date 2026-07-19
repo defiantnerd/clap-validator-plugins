@@ -27,9 +27,9 @@ const clap_plugin_descriptor MultiOutGenPlugin::descriptor = {
     .id = "org.clap-validator.multiout-gen",
     .name = "Validator MultiOut Gen",
     .vendor = "CLAP Validator Plugin Project",
-    .url = "https://github.com/defiantnerd/clap-validator-plugin",
+    .url = "https://github.com/defiantnerd/clap-validator-plugins",
     .manual_url = "",
-    .support_url = "https://github.com/defiantnerd/clap-validator-plugin/issues",
+    .support_url = "https://github.com/defiantnerd/clap-validator-plugins/issues",
     .version = "0.1.0",
     .description = "Test-tone generator with audio-ports-config: 'Stereo' (1 main out) or "
                    "'Multi Out' (main + 4 aux outs), a distinct sine pitch per port.",

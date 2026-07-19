@@ -25,9 +25,9 @@ const clap_plugin_descriptor SlowPlugin::descriptor = {
     .id = "org.clap-validator.slow",
     .name = "Validator Slow",
     .vendor = "CLAP Validator Plugin Project",
-    .url = "https://github.com/defiantnerd/clap-validator-plugin",
+    .url = "https://github.com/defiantnerd/clap-validator-plugins",
     .manual_url = "",
-    .support_url = "https://github.com/defiantnerd/clap-validator-plugin/issues",
+    .support_url = "https://github.com/defiantnerd/clap-validator-plugins/issues",
     .version = "0.1.0",
     .description = "Deliberately slow: state save/load block for 'Slowness' seconds, activate "
                    "blocks 250 ms, latency reports one second of samples. Hosts must not freeze "

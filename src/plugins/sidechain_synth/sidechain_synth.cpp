@@ -25,9 +25,9 @@ const clap_plugin_descriptor SidechainSynthPlugin::descriptor = {
     .id = "org.clap-validator.sidechain-synth",
     .name = "Validator Sidechain Synth",
     .vendor = "CLAP Validator Plugin Project",
-    .url = "https://github.com/defiantnerd/clap-validator-plugin",
+    .url = "https://github.com/defiantnerd/clap-validator-plugins",
     .manual_url = "",
-    .support_url = "https://github.com/defiantnerd/clap-validator-plugin/issues",
+    .support_url = "https://github.com/defiantnerd/clap-validator-plugins/issues",
     .version = "0.1.0",
     .description = "Sine synthesizer whose output is gated by a non-main stereo sidechain "
                    "input — tests hosts' audio-into-instrument routing.",

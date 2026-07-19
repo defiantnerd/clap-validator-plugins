@@ -24,9 +24,9 @@ const clap_plugin_descriptor AudioPortsZeroPlugin::descriptor = {
     .id = "org.clap-validator.audioports-zero",
     .name = "Validator AudioPortsZero",
     .vendor = "CLAP Validator Plugin Project",
-    .url = "https://github.com/defiantnerd/clap-validator-plugin",
+    .url = "https://github.com/defiantnerd/clap-validator-plugins",
     .manual_url = "",
-    .support_url = "https://github.com/defiantnerd/clap-validator-plugin/issues",
+    .support_url = "https://github.com/defiantnerd/clap-validator-plugins/issues",
     .version = "0.1.0",
     .description = "Implements clap.audio-ports but reports zero ports in both directions — "
                    "hosts must handle a portless plugin.",

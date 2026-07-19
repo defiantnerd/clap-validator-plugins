@@ -1,4 +1,4 @@
-# clap-validator-plugin
+# clap-validator-plugins
 
 A suite of [CLAP](https://github.com/free-audio/clap) plugins designed to test **hosts** —
 the inverse of [clap-validator](https://github.com/free-audio/clap-validator), which tests plugins.

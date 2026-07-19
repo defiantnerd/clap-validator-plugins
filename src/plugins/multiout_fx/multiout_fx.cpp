@@ -23,9 +23,9 @@ const clap_plugin_descriptor MultiOutFxPlugin::descriptor = {
     .id = "org.clap-validator.multiout-fx",
     .name = "Validator MultiOut FX",
     .vendor = "CLAP Validator Plugin Project",
-    .url = "https://github.com/defiantnerd/clap-validator-plugin",
+    .url = "https://github.com/defiantnerd/clap-validator-plugins",
     .manual_url = "",
-    .support_url = "https://github.com/defiantnerd/clap-validator-plugin/issues",
+    .support_url = "https://github.com/defiantnerd/clap-validator-plugins/issues",
     .version = "0.1.0",
     .description = "Stereo effect fanning its input to multiple outputs, with "
                    "audio-ports-config: 'Stereo' (1 in / 1 out) or 'Multi Out' (1 in / 3 out).",
