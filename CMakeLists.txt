@@ -25,11 +25,13 @@ add_library(clap-validator-plugins MODULE
     src/wrapper/threadcheck.cpp
     src/wrapper/ext/audio_ports.cpp
     src/wrapper/ext/latency.cpp
+    src/wrapper/ext/note_ports.cpp
     src/wrapper/ext/params.cpp
     src/wrapper/ext/render.cpp
     src/wrapper/ext/state.cpp
     src/wrapper/ext/tail.cpp
-    src/plugins/effect/effect.cpp)
+    src/plugins/effect/effect.cpp
+    src/plugins/notefx/notefx.cpp)
 
 target_link_libraries(clap-validator-plugins PRIVATE clap)
 target_include_directories(clap-validator-plugins PRIVATE src)

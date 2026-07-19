@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include "plugins/effect/effect.h"
+#include "plugins/notefx/notefx.h"
 
 namespace cvp {
 
@@ -13,6 +14,7 @@ namespace {
 
 const PluginEntry kEntries[] = {
     {&EffectPlugin::descriptor, &EffectPlugin::create},
+    {&NoteFxPlugin::descriptor, &NoteFxPlugin::create},
 };
 
 } // namespace
