@@ -43,11 +43,12 @@ const InternalPreset* findInternalPreset(const char* loadKey) noexcept {
 }
 
 std::string presetDirectoryLocation() {
-#if defined(_WIN32)
-    return "/" + presetDirectory();
-#else
+    // Per clap 1.2.10 (factory/preset-discovery.h) a FILE location is a path
+    // that works with plain OS filesystem functions — on Windows that means
+    // "C:\...". clap-validator (<= 0.3.2) instead demands a leading slash and
+    // then uses the string verbatim, which cannot work on Windows; it rejects
+    // this declaration (non-fatal for us) and skips file crawling there.
     return presetDirectory();
-#endif
 }
 
 std::string locationToPath(const char* location) {
