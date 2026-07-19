@@ -45,6 +45,10 @@ SidechainSynthPlugin::SidechainSynthPlugin(const clap_host* host) : Plugin(&desc
                      static_cast<ext::NotePortsProvider*>(this));
     provideExtension(CLAP_EXT_PARAMS, ext::paramsVtable(), static_cast<ext::ParamsProvider*>(this));
     provideExtension(CLAP_EXT_STATE, ext::stateVtable(), static_cast<ext::StateProvider*>(this));
+    provideExtension(CLAP_EXT_REMOTE_CONTROLS, ext::remoteControlsVtable(),
+                     static_cast<ext::RemoteControlsProvider*>(this));
+    provideExtension(CLAP_EXT_REMOTE_CONTROLS_COMPAT, ext::remoteControlsVtable(),
+                     static_cast<ext::RemoteControlsProvider*>(this));
     // Deliberately NOT: CLAP_EXT_LATENCY, CLAP_EXT_TAIL, CLAP_EXT_VOICE_INFO.
 }
 
@@ -209,6 +213,21 @@ bool SidechainSynthPlugin::stateLoad(const clap_istream* stream) noexcept {
         return false;
     _volume.store(volume, std::memory_order_relaxed);
     _sidechainAmount.store(amount, std::memory_order_relaxed);
+    return true;
+}
+
+// ---- remote-controls ----
+
+uint32_t SidechainSynthPlugin::remoteControlsPageCount() noexcept {
+    return 1;
+}
+
+bool SidechainSynthPlugin::remoteControlsPage(uint32_t pageIndex,
+                                              clap_remote_controls_page* page) noexcept {
+    if (pageIndex != 0)
+        return false;
+    const clap_id params[] = {kParamVolume, kParamSidechainAmount};
+    ext::fillRemoteControlsPage(page, 0, "Validator", "Main", params, 2);
     return true;
 }
 

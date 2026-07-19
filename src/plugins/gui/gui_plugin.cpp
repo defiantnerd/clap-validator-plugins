@@ -54,6 +54,10 @@ GuiPlugin::GuiPlugin(const clap_host* host) : Plugin(&descriptor, host) {
     provideExtension(CLAP_EXT_PARAMS, ext::paramsVtable(), static_cast<ext::ParamsProvider*>(this));
     provideExtension(CLAP_EXT_STATE, ext::stateVtable(), static_cast<ext::StateProvider*>(this));
     provideExtension(CLAP_EXT_GUI, ext::guiVtable(), static_cast<ext::GuiProvider*>(this));
+    provideExtension(CLAP_EXT_REMOTE_CONTROLS, ext::remoteControlsVtable(),
+                     static_cast<ext::RemoteControlsProvider*>(this));
+    provideExtension(CLAP_EXT_REMOTE_CONTROLS_COMPAT, ext::remoteControlsVtable(),
+                     static_cast<ext::RemoteControlsProvider*>(this));
     setLifecycleLogging(true);
 }
 
@@ -398,6 +402,35 @@ bool GuiPlugin::guiHide() noexcept {
     if (!_view)
         return false;
     _view->hide();
+    return true;
+}
+
+// ---- remote-controls: two pages, so hosts must handle paging ----
+
+uint32_t GuiPlugin::remoteControlsPageCount() noexcept {
+    return 2;
+}
+
+bool GuiPlugin::remoteControlsPage(uint32_t pageIndex,
+                                   clap_remote_controls_page* page) noexcept {
+    char buf[96];
+    switch (pageIndex) {
+    case 0: {
+        const clap_id params[] = {kParamGain, kParamMute};
+        ext::fillRemoteControlsPage(page, 0, "Validator", "Mix", params, 2);
+        break;
+    }
+    case 1: {
+        const clap_id params[] = {kParamMode};
+        ext::fillRemoteControlsPage(page, 1, "Validator", "Options", params, 1);
+        break;
+    }
+    default:
+        return false;
+    }
+    std::snprintf(buf, sizeof(buf), "remote-controls: get(page=%u) -> '%s'", pageIndex,
+                  page->page_name);
+    logToHost(CLAP_LOG_DEBUG, buf);
     return true;
 }
 

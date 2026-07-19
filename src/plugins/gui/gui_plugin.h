@@ -8,6 +8,7 @@
 #include "wrapper/ext/audio_ports.h"
 #include "wrapper/ext/gui.h"
 #include "wrapper/ext/params.h"
+#include "wrapper/ext/remote_controls.h"
 #include "wrapper/ext/state.h"
 #include "wrapper/param_queue.h"
 #include "wrapper/plugin.h"
@@ -22,12 +23,14 @@ namespace cvp {
 // from the host is logged — the view live-documents the host's GUI protocol
 // usage. Embedded windows only.
 //
-// Extension profile: audio-ports (stereo in/out), params, state, gui.
+// Extension profile: audio-ports (stereo in/out), params, state, gui,
+// remote-controls (two pages — exercises hosts' page switching).
 class GuiPlugin final : public Plugin,
                         public ext::AudioPortsProvider,
                         public ext::ParamsProvider,
                         public ext::StateProvider,
                         public ext::GuiProvider,
+                        public ext::RemoteControlsProvider,
                         public GuiModel {
 public:
     static const clap_plugin_descriptor descriptor;
@@ -73,6 +76,11 @@ protected:
     void guiSuggestTitle(const char* title) noexcept override;
     bool guiShow() noexcept override;
     bool guiHide() noexcept override;
+
+    // ext::RemoteControlsProvider
+    uint32_t remoteControlsPageCount() noexcept override;
+    bool remoteControlsPage(uint32_t pageIndex,
+                            clap_remote_controls_page* page) noexcept override;
 
     // GuiModel
     uint32_t guiParamCount() noexcept override;

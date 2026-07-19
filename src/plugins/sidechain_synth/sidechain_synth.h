@@ -6,6 +6,7 @@
 #include "wrapper/ext/audio_ports.h"
 #include "wrapper/ext/note_ports.h"
 #include "wrapper/ext/params.h"
+#include "wrapper/ext/remote_controls.h"
 #include "wrapper/ext/state.h"
 #include "wrapper/plugin.h"
 
@@ -15,8 +16,8 @@ namespace cvp {
 // modulated by a NON-MAIN stereo audio input ("Sidechain").
 //
 // Extension profile: note-ports (1 in), audio-ports (1 non-main stereo in +
-// 1 main stereo out), params, state. Deliberately absent: latency, tail,
-// voice-info.
+// 1 main stereo out), params, state, remote-controls. Deliberately absent:
+// latency, tail, voice-info.
 //
 // Host-testing hook: an instrument with a non-main audio input exercises
 // hosts' audio-into-instrument routing. Correct routing is audibly
@@ -25,7 +26,8 @@ class SidechainSynthPlugin final : public Plugin,
                                    public ext::AudioPortsProvider,
                                    public ext::NotePortsProvider,
                                    public ext::ParamsProvider,
-                                   public ext::StateProvider {
+                                   public ext::StateProvider,
+                                   public ext::RemoteControlsProvider {
 public:
     static const clap_plugin_descriptor descriptor;
     static const clap_plugin* create(const clap_host* host);
@@ -57,6 +59,11 @@ protected:
     // ext::StateProvider
     bool stateSave(const clap_ostream* stream) noexcept override;
     bool stateLoad(const clap_istream* stream) noexcept override;
+
+    // ext::RemoteControlsProvider
+    uint32_t remoteControlsPageCount() noexcept override;
+    bool remoteControlsPage(uint32_t pageIndex,
+                            clap_remote_controls_page* page) noexcept override;
 
 private:
     enum ParamId : clap_id {

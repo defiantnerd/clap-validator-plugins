@@ -36,6 +36,7 @@ add_library(clap-validator-plugins MODULE
     src/wrapper/ext/latency.cpp
     src/wrapper/ext/note_ports.cpp
     src/wrapper/ext/params.cpp
+    src/wrapper/ext/remote_controls.cpp
     src/wrapper/ext/render.cpp
     src/wrapper/ext/state.cpp
     src/wrapper/ext/tail.cpp

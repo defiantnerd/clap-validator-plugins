@@ -14,16 +14,16 @@ through the host's `clap.log` extension with `CLAP_LOG_HOST_MISBEHAVING`.
 
 | Plugin | id (`org.clap-validator.…`) | Extensions exposed | Deliberately absent | DSP |
 |---|---|---|---|---|
-| Validator Effect | `effect` | audio-ports (stereo in/out), params, state, latency, tail, render | **note-ports** | gain |
+| Validator Effect | `effect` | audio-ports (stereo in/out), params, state, latency, tail, render, remote-controls | **note-ports** | gain |
 | Validator NoteFX | `notefx` | note-ports (1 in / 1 out), params, state | **audio-ports — the extension is not implemented at all** | note transpose |
 | Validator Synth | `synth` | note-ports (1 in), audio-ports (1 stereo out), params, state, voice-info | latency, tail | 8-voice sine |
-| Validator Sidechain Synth | `sidechain-synth` | note-ports (1 in), audio-ports (**non-main** stereo in "Sidechain" + main stereo out), params, state | latency, tail, voice-info | sine gated by sidechain level |
+| Validator Sidechain Synth | `sidechain-synth` | note-ports (1 in), audio-ports (**non-main** stereo in "Sidechain" + main stereo out), params, state, remote-controls | latency, tail, voice-info | sine gated by sidechain level |
 | Validator MultiOut Gen | `multiout-gen` | audio-ports, audio-ports-config ("Stereo": 1 out; "Multi Out": main + 4 aux), params, state | note-ports | distinct sine pitch per port |
 | Validator MultiOut FX | `multiout-fx` | audio-ports (1 stereo in), audio-ports-config ("Stereo": 1 out; "Multi Out": main + 2 aux), params, state | note-ports | input fan-out |
 | Validator AudioPortsZero | `audioports-zero` | **audio-ports with 0 ports** in both directions, params, state | note-ports | none (sleeps) |
 | Validator Slow | `slow` | audio-ports (stereo in/out), params, state, latency | note-ports | passthrough |
 | Validator HostCheck | `hostcheck` | audio-ports (stereo in/out) **only** | **params, state** — first flavor with neither | passthrough |
-| Validator GUI | `gui` | audio-ports (stereo in/out), params, state, **gui** | note-ports | gain |
+| Validator GUI | `gui` | audio-ports (stereo in/out), params, state, **gui**, remote-controls (**2 pages**) | note-ports | gain |
 
 Host-testing traps baked in:
 
@@ -44,6 +44,10 @@ Host-testing traps baked in:
 - **HostCheck**: probes ~22 host-side extensions on `init` and logs present/absent, exercises
   `request_callback()`, and records every lifecycle transition. Also deliberately has neither
   params nor state.
+- **Remote controls**: every plugin with more than one parameter exposes
+  `clap.remote-controls/2` (registered under the compat id too). The GUI flavor has **two**
+  pages ("Mix": Gain+Mute, "Options": Mode), so hosts must handle page switching; unused
+  control slots are correctly `CLAP_INVALID_ID`.
 - **GUI**: see below.
 
 ## The GUI

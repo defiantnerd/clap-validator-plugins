@@ -47,6 +47,10 @@ EffectPlugin::EffectPlugin(const clap_host* host) : Plugin(&descriptor, host) {
                      static_cast<ext::LatencyProvider*>(this));
     provideExtension(CLAP_EXT_TAIL, ext::tailVtable(), static_cast<ext::TailProvider*>(this));
     provideExtension(CLAP_EXT_RENDER, ext::renderVtable(), static_cast<ext::RenderProvider*>(this));
+    provideExtension(CLAP_EXT_REMOTE_CONTROLS, ext::remoteControlsVtable(),
+                     static_cast<ext::RemoteControlsProvider*>(this));
+    provideExtension(CLAP_EXT_REMOTE_CONTROLS_COMPAT, ext::remoteControlsVtable(),
+                     static_cast<ext::RemoteControlsProvider*>(this));
     // Deliberately NOT: CLAP_EXT_NOTE_PORTS.
 }
 
@@ -231,6 +235,21 @@ bool EffectPlugin::renderSet(clap_plugin_render_mode mode) noexcept {
     if (mode != CLAP_RENDER_REALTIME && mode != CLAP_RENDER_OFFLINE)
         return false;
     _renderMode = mode;
+    return true;
+}
+
+// ---- remote-controls ----
+
+uint32_t EffectPlugin::remoteControlsPageCount() noexcept {
+    return 1;
+}
+
+bool EffectPlugin::remoteControlsPage(uint32_t pageIndex,
+                                      clap_remote_controls_page* page) noexcept {
+    if (pageIndex != 0)
+        return false;
+    const clap_id params[] = {kParamGain, kParamLatency, kParamTail};
+    ext::fillRemoteControlsPage(page, 0, "Validator", "Main", params, 3);
     return true;
 }
 

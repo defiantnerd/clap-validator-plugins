@@ -5,6 +5,7 @@
 #include "wrapper/ext/audio_ports.h"
 #include "wrapper/ext/latency.h"
 #include "wrapper/ext/params.h"
+#include "wrapper/ext/remote_controls.h"
 #include "wrapper/ext/render.h"
 #include "wrapper/ext/state.h"
 #include "wrapper/ext/tail.h"
@@ -14,8 +15,8 @@ namespace cvp {
 
 // Validator Effect — stereo gain effect.
 //
-// Extension profile: audio-ports, params, state, latency, tail, render.
-// Deliberately absent: note-ports.
+// Extension profile: audio-ports, params, state, latency, tail, render,
+// remote-controls. Deliberately absent: note-ports.
 //
 // Host-testing hooks: the Latency parameter is reported through clap.latency
 // and triggers host->request_restart() when changed while active — dynamic
@@ -26,7 +27,8 @@ class EffectPlugin final : public Plugin,
                            public ext::StateProvider,
                            public ext::LatencyProvider,
                            public ext::TailProvider,
-                           public ext::RenderProvider {
+                           public ext::RenderProvider,
+                           public ext::RemoteControlsProvider {
 public:
     static const clap_plugin_descriptor descriptor;
     static const clap_plugin* create(const clap_host* host);
@@ -60,6 +62,11 @@ protected:
     // ext::RenderProvider
     bool renderHasHardRealtimeRequirement() noexcept override;
     bool renderSet(clap_plugin_render_mode mode) noexcept override;
+
+    // ext::RemoteControlsProvider
+    uint32_t remoteControlsPageCount() noexcept override;
+    bool remoteControlsPage(uint32_t pageIndex,
+                            clap_remote_controls_page* page) noexcept override;
 
 private:
     enum ParamId : clap_id {
