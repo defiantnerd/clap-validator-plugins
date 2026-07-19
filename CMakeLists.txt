@@ -33,8 +33,11 @@ add_library(clap-validator-plugins MODULE
     src/wrapper/ext/state.cpp
     src/wrapper/ext/tail.cpp
     src/wrapper/ext/voice_info.cpp
+    src/plugins/audioports_zero/audioports_zero.cpp
     src/plugins/common/sine_engine.cpp
     src/plugins/effect/effect.cpp
+    src/plugins/hostcheck/hostcheck.cpp
+    src/plugins/slow/slow.cpp
     src/plugins/multiout_fx/multiout_fx.cpp
     src/plugins/multiout_gen/multiout_gen.cpp
     src/plugins/notefx/notefx.cpp

@@ -5,11 +5,14 @@
 
 #include <cstring>
 
+#include "plugins/audioports_zero/audioports_zero.h"
 #include "plugins/effect/effect.h"
+#include "plugins/hostcheck/hostcheck.h"
 #include "plugins/multiout_fx/multiout_fx.h"
 #include "plugins/multiout_gen/multiout_gen.h"
 #include "plugins/notefx/notefx.h"
 #include "plugins/sidechain_synth/sidechain_synth.h"
+#include "plugins/slow/slow.h"
 #include "plugins/synth/synth.h"
 
 namespace cvp {
@@ -23,6 +26,9 @@ const PluginEntry kEntries[] = {
     {&SidechainSynthPlugin::descriptor, &SidechainSynthPlugin::create},
     {&MultiOutGenPlugin::descriptor, &MultiOutGenPlugin::create},
     {&MultiOutFxPlugin::descriptor, &MultiOutFxPlugin::create},
+    {&AudioPortsZeroPlugin::descriptor, &AudioPortsZeroPlugin::create},
+    {&SlowPlugin::descriptor, &SlowPlugin::create},
+    {&HostCheckPlugin::descriptor, &HostCheckPlugin::create},
 };
 
 } // namespace
