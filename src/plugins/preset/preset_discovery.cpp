@@ -41,11 +41,22 @@ bool providerInit(const clap_preset_discovery_provider* provider) {
     if (!p->indexer->declare_filetype(p->indexer, &filetype))
         return false;
 
+    // clap-validator <= 0.3.2 cannot handle ANY Windows FILE location: its
+    // indexer requires a leading '/', but its crawler then uses the string
+    // verbatim, which Windows rejects — and every declaration error fails
+    // provider creation. Skip the FILE location for that indexer only; the
+    // internal presets keep its tests covered, and real hosts get the
+    // spec-conforming plain path.
+    bool skipFileLocation = false;
+#if defined(_WIN32)
+    skipFileLocation = p->indexer->name && std::strcmp(p->indexer->name, "clap-validator") == 0;
+#endif
+
     // Only declare the FILE location when the directory actually exists —
     // declaring an uncrawlable location breaks host indexers (and this can
     // legitimately happen in sandboxed hosts). A rejected FILE location is
     // not fatal either: the internal presets remain available.
-    if (fileLocationUsable) {
+    if (fileLocationUsable && !skipFileLocation) {
         const clap_preset_discovery_location fileLocation = {
             .flags = CLAP_PRESET_DISCOVERY_IS_USER_CONTENT,
             .name = "Validator Preset Files",
