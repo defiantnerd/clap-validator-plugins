@@ -1,0 +1,72 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CLAP_VALIDATOR_VERSION: "0.3.2"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            plugin_path: build/release/clap-validator-plugins.clap
+            validator_asset: macos-universal.tar.gz
+          - os: ubuntu-latest
+            plugin_path: build/release/clap-validator-plugins.clap
+            validator_asset: ubuntu-18.04.tar.gz
+          - os: windows-latest
+            plugin_path: build/win/Release/clap-validator-plugins.clap
+            validator_asset: windows.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libx11-dev
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Configure and build (Ninja)
+        if: runner.os != 'Windows'
+        run: |
+          cmake --preset release
+          cmake --build --preset release
+
+      # Windows uses the default Visual Studio generator (multi-config),
+      # which needs no vcvars environment on the runner.
+      - name: Configure and build (MSVC)
+        if: runner.os == 'Windows'
+        run: |
+          cmake -B build/win
+          cmake --build build/win --config Release
+
+      - name: Download clap-validator
+        shell: bash
+        run: |
+          curl -sL -o cv-asset "https://github.com/free-audio/clap-validator/releases/download/${CLAP_VALIDATOR_VERSION}/clap-validator-${CLAP_VALIDATOR_VERSION}-${{ matrix.validator_asset }}"
+          mkdir -p cv
+          # bsdtar (macOS/Windows) handles .zip too; the Linux asset is .tar.gz.
+          tar -xf cv-asset -C cv
+
+      - name: Validate
+        shell: bash
+        run: |
+          CV=$(find cv -type f \( -name 'clap-validator' -o -name 'clap-validator.exe' \) | head -1)
+          chmod +x "$CV" 2>/dev/null || true
+          "$CV" --version
+          "$CV" validate "${{ matrix.plugin_path }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clap-validator-plugins-${{ runner.os }}
+          path: ${{ matrix.plugin_path }}

@@ -1,14 +1,27 @@
 # clap-validator-plugins
 
+[![build](https://github.com/defiantnerd/clap-validator-plugins/actions/workflows/build.yml/badge.svg)](https://github.com/defiantnerd/clap-validator-plugins/actions/workflows/build.yml)
+
 A suite of [CLAP](https://github.com/free-audio/clap) plugins designed to test **hosts** —
 the inverse of [clap-validator](https://github.com/free-audio/clap-validator), which tests plugins.
 
-All plugins ship in a single `clap-validator-plugins.clap` binary exposing them through one
-`clap_plugin_factory` (which itself exercises hosts' multi-plugin-binary handling). Each plugin
-deliberately exposes a different extension profile, forcing hosts to correctly handle
-heterogeneous plugin configurations. In debug builds the plugins also actively detect host
-misbehavior — thread-contract violations and illegal lifecycle transitions — and report it
-through the host's `clap.log` extension with `CLAP_LOG_HOST_MISBEHAVING`.
+All twelve plugins ship in a single `clap-validator-plugins.clap` binary whose entry point
+exposes **two factories**: the plugin factory and a preset-discovery factory — multi-plugin
+binaries and multi-factory entries are both things hosts must handle. Each plugin deliberately
+exposes a different extension profile, forcing hosts to correctly handle heterogeneous plugin
+configurations.
+
+The suite is also an *active* diagnostic instrument:
+
+- Every plugin logs the **host's identity** (name, vendor, version, URL, CLAP version) and
+  probes **22 host-side extensions** at `init()`, logging which are present and which are not —
+  a one-glance host fingerprint.
+- In debug builds the plugins detect host misbehavior — thread-contract violations, illegal
+  lifecycle transitions, floating-only GUI calls on embedded editors, configuration changes
+  while active — and report it through the host's `clap.log` extension with
+  `CLAP_LOG_HOST_MISBEHAVING`.
+- All log output of an instance flows through a per-instance `LogBuffer` (in addition to
+  `clap.log`/stderr), which the GUI flavor renders live in its log pane.
 
 ## The plugin matrix
 
@@ -43,9 +56,9 @@ Host-testing traps baked in:
   reports zero ports in both directions.
 - **Slow**: `state save/load` block for the `Slowness` parameter's duration (default 2 s),
   `activate` blocks 250 ms, latency reports one full second. Hosts must not freeze or time out.
-- **HostCheck**: probes ~22 host-side extensions on `init` and logs present/absent, exercises
-  `request_callback()`, and records every lifecycle transition. Also deliberately has neither
-  params nor state.
+- **HostCheck**: exercises `host->request_callback()` and logs the `on_main_thread()`
+  round-trip, with lifecycle logging enabled so every transition the host drives is recorded.
+  Also deliberately has neither params nor state — the only flavor with neither.
 - **Remote controls**: every plugin with more than one parameter exposes
   `clap.remote-controls/2` (registered under the compat id too). The GUI flavor has **two**
   pages ("Mix": Gain+Mute, "Options": Mode), so hosts must handle page switching; unused
@@ -79,9 +92,13 @@ Xlib on Linux. Each platform view shows:
   `clap_host_params.request_flush()`, so the host's GUI→automation path gets exercised;
 - below, a **≥20-line log pane in a monospaced font**. *All* log output of the instance is
   guaranteed to appear there: every logging path (host `clap.log` delivery, stderr fallback,
-  thread-check violation reports, lifecycle events) flows through a per-instance `LogBuffer`
-  first, and the view renders from that buffer at ~10 Hz. Every `gui_*` call the host makes is
-  logged too, so the editor live-documents the host's GUI protocol usage.
+  thread-check violation reports, lifecycle events, the host fingerprint) flows through a
+  per-instance `LogBuffer` first, and the view renders from that buffer at ~10 Hz. Every
+  `gui_*` call the host makes is logged too, so the editor live-documents the host's GUI
+  protocol usage;
+- a **Copy Log** button between the two sections that copies the complete log to the system
+  clipboard (NSPasteboard / `CF_UNICODETEXT` / X11 `CLIPBOARD` selection with
+  TARGETS/UTF8_STRING service).
 
 Embedded windows only (per spec recommendation); floating-window requests are rejected and
 logged. Platform status: **macOS build- and runtime-verified** (embedded in a test host,
@@ -111,7 +128,8 @@ Or pass `-DCVP_COPY_AFTER_BUILD=ON` to copy automatically after every build.
 
 ## Testing
 
-With [clap-validator](https://github.com/free-audio/clap-validator) on your `PATH`:
+With [clap-validator](https://github.com/free-audio/clap-validator) on your `PATH` (or passed
+via `-DCLAP_VALIDATOR=/path/to/clap-validator` at configure time):
 
 ```sh
 ctest --preset default
@@ -119,6 +137,9 @@ ctest --preset default
 
 [clap-info](https://github.com/free-audio/clap-info) is useful to inspect each plugin's exact
 extension/port/param profile.
+
+CI (GitHub Actions) builds the suite on macOS, Windows, and Linux, runs clap-validator against
+each build, and uploads the built `.clap` for every platform as workflow artifacts.
 
 ## Options
 
@@ -137,7 +158,10 @@ extension/port/param profile.
 2. Add the source file to `CMakeLists.txt` and one `{&Class::descriptor, &Class::create}`
    line to `src/registry.cpp`.
 
-Planned future flavors: `surround`, `preset` (preset-load + preset-discovery factory).
+The wrapper (`src/wrapper/`) already provides Provider interfaces for: audio-ports,
+audio-ports-config, configurable-audio-ports, gui, latency, note-ports, params, preset-load,
+remote-controls, render, state, surround, tail, voice-info — plus the `LogBuffer`,
+`ThreadChecker`, `StreamHelper`, and `ParamEventQueue` utilities.
 
 ## License
 
