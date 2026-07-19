@@ -7,6 +7,8 @@
 
 #include "plugins/effect/effect.h"
 #include "plugins/notefx/notefx.h"
+#include "plugins/sidechain_synth/sidechain_synth.h"
+#include "plugins/synth/synth.h"
 
 namespace cvp {
 
@@ -15,6 +17,8 @@ namespace {
 const PluginEntry kEntries[] = {
     {&EffectPlugin::descriptor, &EffectPlugin::create},
     {&NoteFxPlugin::descriptor, &NoteFxPlugin::create},
+    {&SynthPlugin::descriptor, &SynthPlugin::create},
+    {&SidechainSynthPlugin::descriptor, &SidechainSynthPlugin::create},
 };
 
 } // namespace

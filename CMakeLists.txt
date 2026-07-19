@@ -30,8 +30,12 @@ add_library(clap-validator-plugins MODULE
     src/wrapper/ext/render.cpp
     src/wrapper/ext/state.cpp
     src/wrapper/ext/tail.cpp
+    src/wrapper/ext/voice_info.cpp
+    src/plugins/common/sine_engine.cpp
     src/plugins/effect/effect.cpp
-    src/plugins/notefx/notefx.cpp)
+    src/plugins/notefx/notefx.cpp
+    src/plugins/sidechain_synth/sidechain_synth.cpp
+    src/plugins/synth/synth.cpp)
 
 target_link_libraries(clap-validator-plugins PRIVATE clap)
 target_include_directories(clap-validator-plugins PRIVATE src)
