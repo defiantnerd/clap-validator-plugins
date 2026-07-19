@@ -8,6 +8,9 @@
 #include "plugins/audioports_zero/audioports_zero.h"
 #include "plugins/effect/effect.h"
 #include "plugins/hostcheck/hostcheck.h"
+#if defined(CVP_HAS_GUI) && CVP_HAS_GUI
+#include "plugins/gui/gui_plugin.h"
+#endif
 #include "plugins/multiout_fx/multiout_fx.h"
 #include "plugins/multiout_gen/multiout_gen.h"
 #include "plugins/notefx/notefx.h"
@@ -29,6 +32,9 @@ const PluginEntry kEntries[] = {
     {&AudioPortsZeroPlugin::descriptor, &AudioPortsZeroPlugin::create},
     {&SlowPlugin::descriptor, &SlowPlugin::create},
     {&HostCheckPlugin::descriptor, &HostCheckPlugin::create},
+#if defined(CVP_HAS_GUI) && CVP_HAS_GUI
+    {&GuiPlugin::descriptor, &GuiPlugin::create},
+#endif
 };
 
 } // namespace

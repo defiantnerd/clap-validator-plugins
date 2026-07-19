@@ -10,6 +10,12 @@ set(CVP_CLAP_TAG "1.2.10" CACHE STRING "free-audio/clap git tag to build against
 option(CVP_COPY_AFTER_BUILD "Copy the .clap to the user plugin folder after build" OFF)
 option(CVP_THREAD_CHECKS "Enable [main-thread]/[audio-thread] runtime assertions" ON)
 
+if(APPLE)
+    enable_language(OBJCXX)
+    set(CMAKE_OBJCXX_STANDARD 20)
+    set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+endif()
+
 include(FetchContent)
 FetchContent_Declare(clap
     GIT_REPOSITORY https://github.com/free-audio/clap.git
@@ -43,6 +49,34 @@ add_library(clap-validator-plugins MODULE
     src/plugins/notefx/notefx.cpp
     src/plugins/sidechain_synth/sidechain_synth.cpp
     src/plugins/synth/synth.cpp)
+
+# ---- framework-free native GUI (Cocoa / Win32 / Xlib) ----
+set(CVP_HAS_GUI 0)
+if(APPLE)
+    set(CVP_HAS_GUI 1)
+    target_sources(clap-validator-plugins PRIVATE src/gui/native_view_mac.mm)
+    set_source_files_properties(src/gui/native_view_mac.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+    target_link_libraries(clap-validator-plugins PRIVATE "-framework Cocoa")
+elseif(WIN32)
+    set(CVP_HAS_GUI 1)
+    target_sources(clap-validator-plugins PRIVATE src/gui/native_view_win32.cpp)
+    target_link_libraries(clap-validator-plugins PRIVATE comctl32 user32 gdi32)
+else()
+    find_package(X11)
+    if(X11_FOUND)
+        set(CVP_HAS_GUI 1)
+        target_sources(clap-validator-plugins PRIVATE src/gui/native_view_x11.cpp)
+        target_link_libraries(clap-validator-plugins PRIVATE X11::X11)
+    else()
+        message(STATUS "X11 not found — the 'Validator GUI' plugin flavor is disabled.")
+    endif()
+endif()
+if(CVP_HAS_GUI)
+    target_sources(clap-validator-plugins PRIVATE
+        src/wrapper/ext/gui.cpp
+        src/plugins/gui/gui_plugin.cpp)
+    target_compile_definitions(clap-validator-plugins PRIVATE CVP_HAS_GUI=1)
+endif()
 
 target_link_libraries(clap-validator-plugins PRIVATE clap)
 target_include_directories(clap-validator-plugins PRIVATE src)
