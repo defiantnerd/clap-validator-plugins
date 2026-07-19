@@ -146,6 +146,10 @@ private:
         _window = XCreateSimpleWindow(_display, static_cast<Window>(_parentXid), 0, 0, width,
                                       height, 0, _textColor, _background);
 
+        _atomClipboard = XInternAtom(_display, "CLIPBOARD", False);
+        _atomUtf8 = XInternAtom(_display, "UTF8_STRING", False);
+        _atomTargets = XInternAtom(_display, "TARGETS", False);
+
         // _XEMBED_INFO: version 0, flags 1 (XEMBED_MAPPED) — some GtkSocket/
         // Qt-based hosts check for it; the full handshake is not needed for a
         // mouse-only UI.
@@ -284,6 +288,12 @@ private:
                     _dragParam = -1;
                 }
                 break;
+            case SelectionRequest:
+                onSelectionRequest(event.xselectionrequest);
+                break;
+            case SelectionClear:
+                // Another client took the clipboard; nothing to release.
+                break;
             default:
                 break;
             }
@@ -303,7 +313,75 @@ private:
         *h = 8;
     }
 
+    void buttonRect(int* x, int* y, int* w, int* h) const {
+        const int pad = static_cast<int>(scaled(kPadding));
+        const int width = static_cast<int>(_widthPx.load(std::memory_order_relaxed));
+        *w = static_cast<int>(scaled(110));
+        *h = static_cast<int>(scaled(kButtonRowHeight - 6));
+        *x = width - pad - *w;
+        *y = static_cast<int>(scaled(buttonRowTopFor(static_cast<uint32_t>(_params.size()))));
+    }
+
+    // Copies the whole log to the X11 CLIPBOARD selection. The content is
+    // served from this window for as long as it owns the selection (standard
+    // X11 semantics; a clipboard manager may take a persistent copy).
+    void copyLog() {
+        const auto lines = _model.guiLog().snapshot();
+        std::string joined;
+        joined.reserve(lines.size() * 64);
+        for (const auto& line : lines) {
+            joined += line;
+            joined += '\n';
+        }
+        _clipboardText = std::move(joined);
+        XSetSelectionOwner(_display, _atomClipboard, _window, CurrentTime);
+        char msg[64];
+        std::snprintf(msg, sizeof(msg), "gui: copied %zu log lines to clipboard", lines.size());
+        _model.guiLog().append(CLAP_LOG_INFO, msg);
+        _dirty = true;
+    }
+
+    void onSelectionRequest(const XSelectionRequestEvent& request) {
+        XSelectionEvent reply{};
+        reply.type = SelectionNotify;
+        reply.display = request.display;
+        reply.requestor = request.requestor;
+        reply.selection = request.selection;
+        reply.target = request.target;
+        reply.time = request.time;
+        reply.property = None;
+
+        // Obsolete clients pass property None: use the target as property.
+        const Atom property = request.property != None ? request.property : request.target;
+
+        if (request.selection == _atomClipboard && !_clipboardText.empty()) {
+            if (request.target == _atomTargets) {
+                const Atom targets[] = {_atomTargets, _atomUtf8, XA_STRING};
+                XChangeProperty(_display, request.requestor, property, XA_ATOM, 32,
+                                PropModeReplace,
+                                reinterpret_cast<const unsigned char*>(targets), 3);
+                reply.property = property;
+            } else if (request.target == _atomUtf8 || request.target == XA_STRING) {
+                XChangeProperty(_display, request.requestor, property, request.target, 8,
+                                PropModeReplace,
+                                reinterpret_cast<const unsigned char*>(_clipboardText.c_str()),
+                                static_cast<int>(_clipboardText.size()));
+                reply.property = property;
+            }
+        }
+        XSendEvent(_display, request.requestor, False, 0, reinterpret_cast<XEvent*>(&reply));
+        XFlush(_display);
+    }
+
     void onMouseDown(int mouseX, int mouseY) {
+        {
+            int x, y, w, h;
+            buttonRect(&x, &y, &w, &h);
+            if (mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h) {
+                copyLog();
+                return;
+            }
+        }
         for (size_t i = 0; i < _params.size(); ++i) {
             int x, y, w, h;
             trackRect(i, &x, &y, &w, &h);
@@ -402,8 +480,27 @@ private:
                         static_cast<int>(std::strlen(text)));
         }
 
+        // Copy Log button.
+        {
+            int x, y, w, h;
+            buttonRect(&x, &y, &w, &h);
+            XSetForeground(_display, _gc, _trackColor);
+            XFillRectangle(_display, buffer, _gc, x, y, static_cast<unsigned>(w),
+                           static_cast<unsigned>(h));
+            XSetForeground(_display, _gc, _textColor);
+            XDrawRectangle(_display, buffer, _gc, x, y, static_cast<unsigned>(w),
+                           static_cast<unsigned>(h));
+            const char* label = "Copy Log";
+            const int labelWidth =
+                _font ? XTextWidth(_font, label, static_cast<int>(std::strlen(label))) : 48;
+            XDrawString(_display, buffer, _gc, x + (w - labelWidth) / 2,
+                        y + h / 2 + fontAscent / 2, label,
+                        static_cast<int>(std::strlen(label)));
+        }
+
         // Log pane: white background, last lines that fit, bottom-anchored.
-        const int logTop = pad + static_cast<int>(_params.size()) * rowH + pad;
+        const int logTop =
+            static_cast<int>(scaled(logTopFor(static_cast<uint32_t>(_params.size()))));
         const int logHeight = static_cast<int>(height) - logTop - pad;
         XSetForeground(_display, _gc, WhitePixel(_display, DefaultScreen(_display)));
         XFillRectangle(_display, buffer, _gc, pad, logTop, width - 2 * pad,
@@ -445,6 +542,8 @@ private:
     Window _window = 0;
     GC _gc = nullptr;
     XFontStruct* _font = nullptr;
+    Atom _atomClipboard = None, _atomUtf8 = None, _atomTargets = None;
+    std::string _clipboardText;
     unsigned long _background = 0, _trackColor = 0, _fillColor = 0, _textColor = 0;
     bool _windowDead = false;
     bool _dirty = true;

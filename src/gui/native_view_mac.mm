@@ -25,6 +25,7 @@ constexpr CGFloat kValueWidth = 90.0;
     NSMutableArray<NSSlider*>* _sliders;
     NSMutableArray<NSTextField*>* _nameLabels;
     NSMutableArray<NSTextField*>* _valueLabels;
+    NSButton* _copyButton;
     NSScrollView* _logScroll;
     NSTextView* _logView;
     NSTimer* _timer;
@@ -88,6 +89,10 @@ constexpr CGFloat kValueWidth = 90.0;
         [self addSubview:value];
     }
 
+    _copyButton = [NSButton buttonWithTitle:@"Copy Log" target:self action:@selector(copyLog:)];
+    _copyButton.bezelStyle = NSBezelStyleRounded;
+    [self addSubview:_copyButton];
+
     _logView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100)];
     _logView.editable = NO;
     _logView.richText = NO;
@@ -132,7 +137,12 @@ constexpr CGFloat kValueWidth = 90.0;
         value.frame = NSMakeRect(width - kValueWidth - pad, y + 4, kValueWidth, 17);
     }
 
-    const CGFloat logTop = pad + static_cast<CGFloat>(_params.size()) * rowH + pad;
+    const CGFloat buttonTop =
+        cvp::NativeView::buttonRowTopFor(static_cast<uint32_t>(_params.size()));
+    _copyButton.frame = NSMakeRect(width - pad - 110, buttonTop, 110,
+                                   cvp::NativeView::kButtonRowHeight - 4);
+
+    const CGFloat logTop = cvp::NativeView::logTopFor(static_cast<uint32_t>(_params.size()));
     _logScroll.frame = NSMakeRect(pad, logTop, width - 2 * pad, height - logTop - pad);
 }
 
@@ -219,6 +229,25 @@ constexpr CGFloat kValueWidth = 90.0;
         _model->guiSetValue(paramId, sender.doubleValue);
         _model->guiEndGesture(paramId);
     }
+}
+
+- (void)copyLog:(id)sender {
+    if (!_model)
+        return;
+    const auto lines = _model->guiLog().snapshot();
+    std::string joined;
+    joined.reserve(lines.size() * 64);
+    for (const auto& line : lines) {
+        joined += line;
+        joined += '\n';
+    }
+    NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+    [pasteboard clearContents];
+    [pasteboard setString:[NSString stringWithUTF8String:joined.c_str()]
+                  forType:NSPasteboardTypeString];
+    char msg[64];
+    snprintf(msg, sizeof(msg), "gui: copied %zu log lines to clipboard", lines.size());
+    _model->guiLog().append(CLAP_LOG_INFO, msg);
 }
 
 - (void)shutdown {

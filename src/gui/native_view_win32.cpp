@@ -17,6 +17,7 @@
 
 #include <commctrl.h>
 
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -201,6 +202,11 @@ private:
             _valueLabels.push_back(value);
         }
 
+        _copyButton = CreateWindowExW(0, L"BUTTON", L"Copy Log",
+                                      WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 0, 0, 10, 10, _hwnd,
+                                      nullptr, inst, nullptr);
+        SendMessageW(_copyButton, WM_SETFONT, reinterpret_cast<WPARAM>(_uiFont), TRUE);
+
         _logEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
                                    WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE |
                                        ES_AUTOVSCROLL | ES_READONLY,
@@ -223,7 +229,14 @@ private:
                        width - labelW - valueW - 3 * pad - 12, rowH - 4, TRUE);
             MoveWindow(_valueLabels[i], width - valueW - pad, y + 4, valueW, rowH - 8, TRUE);
         }
-        const int logTop = pad + static_cast<int>(_params.size()) * rowH + pad;
+        const int buttonTop =
+            static_cast<int>(scaled(buttonRowTopFor(static_cast<uint32_t>(_params.size()))));
+        const int buttonW = static_cast<int>(scaled(110));
+        const int buttonH = static_cast<int>(scaled(kButtonRowHeight - 4));
+        MoveWindow(_copyButton, width - pad - buttonW, buttonTop, buttonW, buttonH, TRUE);
+
+        const int logTop =
+            static_cast<int>(scaled(logTopFor(static_cast<uint32_t>(_params.size()))));
         MoveWindow(_logEdit, pad, logTop, width - 2 * pad, height - logTop - pad, TRUE);
     }
 
@@ -275,6 +288,32 @@ private:
         }
     }
 
+    void copyLog() {
+        const auto lines = _model.guiLog().snapshot();
+        std::string joined;
+        joined.reserve(lines.size() * 64);
+        for (const auto& line : lines) {
+            joined += line;
+            joined += "\r\n";
+        }
+        const std::wstring wide = toWide(joined.c_str());
+        if (!OpenClipboard(_hwnd))
+            return;
+        EmptyClipboard();
+        HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, (wide.size() + 1) * sizeof(wchar_t));
+        if (mem) {
+            auto* dst = static_cast<wchar_t*>(GlobalLock(mem));
+            std::memcpy(dst, wide.c_str(), (wide.size() + 1) * sizeof(wchar_t));
+            GlobalUnlock(mem);
+            if (!SetClipboardData(CF_UNICODETEXT, mem))
+                GlobalFree(mem);
+        }
+        CloseClipboard();
+        char msg[64];
+        std::snprintf(msg, sizeof(msg), "gui: copied %zu log lines to clipboard", lines.size());
+        _model.guiLog().append(CLAP_LOG_INFO, msg);
+    }
+
     void tick() {
         char text[96];
         for (size_t i = 0; i < _params.size(); ++i) {
@@ -323,6 +362,11 @@ private:
             if (lParam)
                 self->onHScroll(wParam, lParam);
             return 0;
+        case WM_COMMAND:
+            if (reinterpret_cast<HWND>(lParam) == self->_copyButton &&
+                HIWORD(wParam) == BN_CLICKED)
+                self->copyLog();
+            return 0;
         case WM_SIZE:
             self->_widthPx = LOWORD(lParam);
             self->_heightPx = HIWORD(lParam);
@@ -343,6 +387,7 @@ private:
     std::vector<HWND> _sliders;
     std::vector<HWND> _valueLabels;
     HWND _hwnd = nullptr;
+    HWND _copyButton = nullptr;
     HWND _logEdit = nullptr;
     HFONT _uiFont = nullptr;
     HFONT _monoFont = nullptr;

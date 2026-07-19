@@ -10,8 +10,9 @@ namespace cvp {
 class GuiModel;
 
 // A platform-native, framework-free view: parameter rows (label + slider +
-// value text) on top, below a >=20-line monospaced log pane rendered from
-// the plugin's LogBuffer, refreshed ~10x per second.
+// value text) on top, a button row (Copy Log -> system clipboard), and below
+// a >=20-line monospaced log pane rendered from the plugin's LogBuffer,
+// refreshed ~10x per second.
 //
 // Lifecycle: constructed unattached (getSize/setSize must already work —
 // setSize before attach() records a pending size). attach() embeds into the
@@ -32,13 +33,21 @@ public:
     static constexpr uint32_t kDefaultWidth = 560;
     static constexpr uint32_t kMinWidth = 420;
     static constexpr uint32_t kRowHeight = 26;
+    static constexpr uint32_t kButtonRowHeight = 28;
     static constexpr uint32_t kLogLines = 20;
     static constexpr uint32_t kLogLineHeight = 15;
     static constexpr uint32_t kPadding = 8;
 
+    static uint32_t buttonRowTopFor(uint32_t paramCount) noexcept {
+        return kPadding + paramCount * kRowHeight + kPadding;
+    }
+
+    static uint32_t logTopFor(uint32_t paramCount) noexcept {
+        return buttonRowTopFor(paramCount) + kButtonRowHeight + kPadding;
+    }
+
     static uint32_t minHeightFor(uint32_t paramCount) noexcept {
-        return kPadding + paramCount * kRowHeight + kPadding + kLogLines * kLogLineHeight +
-               kPadding;
+        return logTopFor(paramCount) + kLogLines * kLogLineHeight + kPadding;
     }
 };
 
