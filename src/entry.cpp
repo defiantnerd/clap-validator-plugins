@@ -4,6 +4,7 @@
 
 #include <cstring>
 
+#include "plugins/preset/preset_discovery.h"
 #include "registry.h"
 
 namespace {
@@ -42,7 +43,12 @@ bool entryInit(const char* /*pluginPath*/) {
 void entryDeinit() {}
 
 const void* entryGetFactory(const char* factoryId) {
-    return std::strcmp(factoryId, CLAP_PLUGIN_FACTORY_ID) == 0 ? &kFactory : nullptr;
+    if (std::strcmp(factoryId, CLAP_PLUGIN_FACTORY_ID) == 0)
+        return &kFactory;
+    if (std::strcmp(factoryId, CLAP_PRESET_DISCOVERY_FACTORY_ID) == 0 ||
+        std::strcmp(factoryId, CLAP_PRESET_DISCOVERY_FACTORY_ID_COMPAT) == 0)
+        return cvp::presetDiscoveryFactory();
+    return nullptr;
 }
 
 } // namespace

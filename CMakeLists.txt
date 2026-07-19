@@ -36,6 +36,7 @@ add_library(clap-validator-plugins MODULE
     src/wrapper/ext/latency.cpp
     src/wrapper/ext/note_ports.cpp
     src/wrapper/ext/params.cpp
+    src/wrapper/ext/preset_load.cpp
     src/wrapper/ext/remote_controls.cpp
     src/wrapper/ext/render.cpp
     src/wrapper/ext/state.cpp
@@ -49,6 +50,9 @@ add_library(clap-validator-plugins MODULE
     src/plugins/multiout_fx/multiout_fx.cpp
     src/plugins/multiout_gen/multiout_gen.cpp
     src/plugins/notefx/notefx.cpp
+    src/plugins/preset/preset_discovery.cpp
+    src/plugins/preset/preset_plugin.cpp
+    src/plugins/preset/preset_shared.cpp
     src/plugins/sidechain_synth/sidechain_synth.cpp
     src/plugins/synth/synth.cpp)
 

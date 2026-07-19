@@ -14,6 +14,7 @@
 #include "plugins/multiout_fx/multiout_fx.h"
 #include "plugins/multiout_gen/multiout_gen.h"
 #include "plugins/notefx/notefx.h"
+#include "plugins/preset/preset_plugin.h"
 #include "plugins/sidechain_synth/sidechain_synth.h"
 #include "plugins/slow/slow.h"
 #include "plugins/synth/synth.h"
@@ -32,6 +33,7 @@ const PluginEntry kEntries[] = {
     {&AudioPortsZeroPlugin::descriptor, &AudioPortsZeroPlugin::create},
     {&SlowPlugin::descriptor, &SlowPlugin::create},
     {&HostCheckPlugin::descriptor, &HostCheckPlugin::create},
+    {&PresetPlugin::descriptor, &PresetPlugin::create},
 #if defined(CVP_HAS_GUI) && CVP_HAS_GUI
     {&GuiPlugin::descriptor, &GuiPlugin::create},
 #endif

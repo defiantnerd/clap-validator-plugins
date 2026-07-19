@@ -24,6 +24,7 @@ through the host's `clap.log` extension with `CLAP_LOG_HOST_MISBEHAVING`.
 | Validator Slow | `slow` | audio-ports (stereo in/out), params, state, latency | note-ports | passthrough |
 | Validator HostCheck | `hostcheck` | audio-ports (stereo in/out) **only** | **params, state** — first flavor with neither | passthrough |
 | Validator GUI | `gui` | audio-ports (stereo in/out), params, state, **gui**, remote-controls (**2 pages**) | note-ports | gain |
+| Validator Preset | `preset` | audio-ports (stereo in/out), params (Gain, Color), state, **preset-load**, remote-controls | note-ports | gain |
 
 Host-testing traps baked in:
 
@@ -48,6 +49,15 @@ Host-testing traps baked in:
   `clap.remote-controls/2` (registered under the compat id too). The GUI flavor has **two**
   pages ("Mix": Gain+Mute, "Options": Mode), so hosts must handle page switching; unused
   control slots are correctly `CLAP_INVALID_ID`.
+- **Preset**: the binary exposes a **second factory** (`clap.preset-discovery-factory/2`, plus
+  compat id) — hosts must handle multi-factory entries. Its provider declares **both location
+  kinds**: internal factory presets (PLUGIN kind, loaded by `load_key`: `internal:unity`,
+  `internal:quiet`, `internal:loud`) and `.cvpreset` text files (FILE kind) crawled from the
+  per-user preset directory (`~/Library/Application Support/clap-validator-plugin/presets`,
+  `%APPDATA%\clap-validator-plugin\presets`, `$XDG_DATA_HOME/clap-validator-plugin/presets`).
+  Two sample files are created there on first discovery (never overwritten). Loading applies
+  the values, calls `clap_host_params.rescan(CLAP_PARAM_RESCAN_VALUES)` and notifies
+  `clap_host_preset_load.loaded()`; failures report through `on_error()`.
 - **GUI**: see below.
 
 ## The GUI
