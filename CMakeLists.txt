@@ -26,6 +26,7 @@ FetchContent_MakeAvailable(clap)
 add_library(clap-validator-plugins MODULE
     src/entry.cpp
     src/registry.cpp
+    src/wrapper/hostinfo.cpp
     src/wrapper/logbuffer.cpp
     src/wrapper/plugin.cpp
     src/wrapper/stream.cpp

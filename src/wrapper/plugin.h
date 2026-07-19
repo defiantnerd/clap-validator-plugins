@@ -99,6 +99,7 @@ private:
     static void sOnMainThread(const clap_plugin* p);
 
     void logLifecycle(const char* message) noexcept;
+    void logHostInfo() noexcept; // hostinfo.cpp — runs for every plugin at init()
 
     clap_plugin _plugin{};
     const clap_host* _host = nullptr;

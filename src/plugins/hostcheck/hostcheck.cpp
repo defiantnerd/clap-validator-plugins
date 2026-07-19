@@ -10,32 +10,6 @@ namespace {
 const char* kFeatures[] = {CLAP_PLUGIN_FEATURE_ANALYZER, CLAP_PLUGIN_FEATURE_UTILITY,
                            CLAP_PLUGIN_FEATURE_STEREO, nullptr};
 
-// Host-side extensions worth probing (stable set of clap 1.2.10).
-const char* kProbedHostExtensions[] = {
-    CLAP_EXT_AMBISONIC,
-    CLAP_EXT_AUDIO_PORTS,
-    CLAP_EXT_AUDIO_PORTS_CONFIG,
-    CLAP_EXT_CONTEXT_MENU,
-    CLAP_EXT_EVENT_REGISTRY,
-    CLAP_EXT_GUI,
-    CLAP_EXT_LATENCY,
-    CLAP_EXT_LOG,
-    CLAP_EXT_NOTE_NAME,
-    CLAP_EXT_NOTE_PORTS,
-    CLAP_EXT_PARAMS,
-    CLAP_EXT_POSIX_FD_SUPPORT,
-    CLAP_EXT_PRESET_LOAD,
-    CLAP_EXT_REMOTE_CONTROLS,
-    CLAP_EXT_STATE,
-    CLAP_EXT_SURROUND,
-    CLAP_EXT_TAIL,
-    CLAP_EXT_THREAD_CHECK,
-    CLAP_EXT_THREAD_POOL,
-    CLAP_EXT_TIMER_SUPPORT,
-    CLAP_EXT_TRACK_INFO,
-    CLAP_EXT_VOICE_INFO,
-};
-
 } // namespace
 
 const clap_plugin_descriptor HostCheckPlugin::descriptor = {
@@ -66,28 +40,10 @@ HostCheckPlugin::HostCheckPlugin(const clap_host* host) : Plugin(&descriptor, ho
 }
 
 bool HostCheckPlugin::init() noexcept {
+    // Host identity + extension probing is logged by the Plugin base for
+    // every flavor; here we additionally exercise the callback round-trip.
     if (!host())
         return true;
-
-    char buf[192];
-    std::snprintf(buf, sizeof(buf), "hostcheck: host '%s' %s (%s), clap %d.%d.%d",
-                  host()->name ? host()->name : "?", host()->version ? host()->version : "?",
-                  host()->vendor ? host()->vendor : "?", host()->clap_version.major,
-                  host()->clap_version.minor, host()->clap_version.revision);
-    logToHost(CLAP_LOG_INFO, buf);
-
-    unsigned present = 0;
-    for (const char* extId : kProbedHostExtensions) {
-        const bool found = host()->get_extension(host(), extId) != nullptr;
-        present += found ? 1 : 0;
-        std::snprintf(buf, sizeof(buf), "hostcheck: host extension %-28s %s", extId,
-                      found ? "PRESENT" : "absent");
-        logToHost(CLAP_LOG_INFO, buf);
-    }
-    std::snprintf(buf, sizeof(buf), "hostcheck: %u of %zu probed host extensions present", present,
-                  sizeof(kProbedHostExtensions) / sizeof(kProbedHostExtensions[0]));
-    logToHost(CLAP_LOG_INFO, buf);
-
     logToHost(CLAP_LOG_INFO, "hostcheck: calling host->request_callback()");
     host()->request_callback(host());
     return true;

@@ -58,6 +58,7 @@ bool Plugin::sInit(const clap_plugin* p) {
     if (self->_host)
         self->_hostLog =
             static_cast<const clap_host_log*>(self->_host->get_extension(self->_host, CLAP_EXT_LOG));
+    self->logHostInfo();
     self->logLifecycle("lifecycle: init()");
     return self->init();
 }

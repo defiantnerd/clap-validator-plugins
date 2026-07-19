@@ -5,12 +5,12 @@
 
 namespace cvp {
 
-// Validator HostCheck — probes the host and logs everything it finds.
+// Validator HostCheck — exercises the host and logs everything it does.
 //
-// On init(): queries ~20 well-known host-side extensions and logs
-// present/absent, then calls host->request_callback() and logs the
-// on_main_thread() arrival. Lifecycle logging is enabled, so every
-// transition the host drives is recorded.
+// Host identity + host-extension probing is logged by the Plugin base for
+// every flavor; this one additionally calls host->request_callback() and
+// logs the on_main_thread() arrival, and has lifecycle logging enabled so
+// every transition the host drives is recorded.
 //
 // Extension profile: audio-ports (stereo passthrough) ONLY — deliberately
 // no params and no state: the first plugin in the suite with neither.
