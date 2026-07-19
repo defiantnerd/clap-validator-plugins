@@ -131,9 +131,18 @@ bool ensureSamplePresetFiles() {
         const fs::path path = dir / sample.fileName;
         if (fs::exists(path, ec))
             continue;
-        std::ofstream file(path);
-        if (file.is_open())
+        // Write atomically (temp + rename) so a killed process can never
+        // leave a partial file behind for later crawls to trip over.
+        const fs::path tmp = dir / (std::string(sample.fileName) + ".tmp");
+        {
+            std::ofstream file(tmp);
+            if (!file.is_open())
+                continue;
             file << sample.content;
+        }
+        fs::rename(tmp, path, ec);
+        if (ec)
+            fs::remove(tmp, ec);
     }
     return true;
 }

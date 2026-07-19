@@ -102,9 +102,12 @@ bool providerGetMetadata(const clap_preset_discovery_provider*, uint32_t locatio
         preset::PresetData data{};
         const std::string path = preset::locationToPath(location);
         if (!preset::parsePresetFile(path.c_str(), &data)) {
+            // A file we can't parse (foreign or corrupt) must not fail the
+            // whole location crawl: report it and skip gracefully.
             if (receiver->on_error)
-                receiver->on_error(receiver, 0, "not a valid .cvpreset file");
-            return false;
+                receiver->on_error(receiver, 0,
+                                   "skipping: not a valid .cvpreset file");
+            return true;
         }
         // One preset per file: a null load_key means "the file is the preset".
         if (receiver->begin_preset(receiver, data.name, nullptr)) {
