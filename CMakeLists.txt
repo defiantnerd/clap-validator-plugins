@@ -21,8 +21,14 @@ add_library(clap-validator-plugins MODULE
     src/entry.cpp
     src/registry.cpp
     src/wrapper/plugin.cpp
+    src/wrapper/stream.cpp
     src/wrapper/threadcheck.cpp
     src/wrapper/ext/audio_ports.cpp
+    src/wrapper/ext/latency.cpp
+    src/wrapper/ext/params.cpp
+    src/wrapper/ext/render.cpp
+    src/wrapper/ext/state.cpp
+    src/wrapper/ext/tail.cpp
     src/plugins/effect/effect.cpp)
 
 target_link_libraries(clap-validator-plugins PRIVATE clap)
