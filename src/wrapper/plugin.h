@@ -4,6 +4,7 @@
 
 #include <vector>
 
+#include "wrapper/logbuffer.h"
 #include "wrapper/threadcheck.h"
 
 namespace cvp {
@@ -28,6 +29,10 @@ public:
 
     const clap_host* host() const noexcept { return _host; }
     ThreadChecker& threadChecker() noexcept { return _threads; }
+
+    // Every log line of this instance lands here (in addition to the host's
+    // clap.log extension or stderr) — GUI log views render from this buffer.
+    LogBuffer& logBuffer() noexcept { return _logBuffer; }
 
     // Looks up the provider interface registered for an extension id.
     // Trampolines may assume it exists: the host can only obtain an extension
@@ -63,8 +68,13 @@ protected:
     bool isProcessing() const noexcept { return _processing; }
     double sampleRate() const noexcept { return _sampleRate; }
 
-    // Logs through the host's clap.log extension if present, stderr otherwise.
-    void logToHost(clap_log_severity severity, const char* message) const noexcept;
+    // Appends to the instance LogBuffer, then forwards to the host's
+    // clap.log extension if present, stderr otherwise.
+    void logToHost(clap_log_severity severity, const char* message) noexcept;
+
+    // When enabled, lifecycle transitions (init/activate/…/destroy and the
+    // first process() call) are logged. Call from the subclass constructor.
+    void setLifecycleLogging(bool enabled) noexcept { _logLifecycle = enabled; }
 
 private:
     struct ExtRecord {
@@ -88,13 +98,18 @@ private:
     static const void* sGetExtension(const clap_plugin* p, const char* id);
     static void sOnMainThread(const clap_plugin* p);
 
+    void logLifecycle(const char* message) noexcept;
+
     clap_plugin _plugin{};
     const clap_host* _host = nullptr;
     const clap_host_log* _hostLog = nullptr;
     std::vector<ExtRecord> _extensions;
+    LogBuffer _logBuffer;
     ThreadChecker _threads;
     bool _active = false;
     bool _processing = false;
+    bool _logLifecycle = false;
+    bool _firstProcessLogged = false;
     double _sampleRate = 0.0;
 };
 

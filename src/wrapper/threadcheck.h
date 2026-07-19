@@ -6,6 +6,8 @@
 
 namespace cvp {
 
+class LogBuffer;
+
 // Enforces CLAP's [main-thread]/[audio-thread] contracts at runtime.
 //
 // Prefers the host's clap.thread-check extension (authoritative); without it,
@@ -17,7 +19,9 @@ namespace cvp {
 // CLAP_LOG_HOST_MISBEHAVING, then assert() in debug builds.
 class ThreadChecker {
 public:
-    void onInit(const clap_host* host) noexcept;
+    // logBuffer: instance log sink — violation reports land there in
+    // addition to the host log / stderr (may be null).
+    void onInit(const clap_host* host, LogBuffer* logBuffer) noexcept;
 
     void assertMainThread(const char* function) const noexcept;
     void assertAudioThread(const char* function) const noexcept;
@@ -32,6 +36,7 @@ private:
     const clap_host* _host = nullptr;
     const clap_host_thread_check* _hostCheck = nullptr;
     const clap_host_log* _hostLog = nullptr;
+    LogBuffer* _logBuffer = nullptr;
     std::thread::id _mainThread{};
 };
 

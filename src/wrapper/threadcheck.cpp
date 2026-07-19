@@ -4,10 +4,13 @@
 #include <cstdio>
 #include <cstring>
 
+#include "wrapper/logbuffer.h"
+
 namespace cvp {
 
-void ThreadChecker::onInit(const clap_host* host) noexcept {
+void ThreadChecker::onInit(const clap_host* host, LogBuffer* logBuffer) noexcept {
     _host = host;
+    _logBuffer = logBuffer;
     _mainThread = std::this_thread::get_id();
     if (host) {
         _hostCheck =
@@ -43,6 +46,8 @@ void ThreadChecker::report(const char* function, const char* expected,
                   "clap-validator-plugin: '%s' was called outside the [%s-thread] contract%s",
                   function, expected,
                   authoritative ? "" : " (heuristic: host lacks clap.thread-check)");
+    if (_logBuffer)
+        _logBuffer->append(CLAP_LOG_HOST_MISBEHAVING, msg);
     if (_hostLog && _hostLog->log)
         _hostLog->log(_host, CLAP_LOG_HOST_MISBEHAVING, msg);
     else
