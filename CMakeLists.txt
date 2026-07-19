@@ -24,6 +24,7 @@ add_library(clap-validator-plugins MODULE
     src/wrapper/stream.cpp
     src/wrapper/threadcheck.cpp
     src/wrapper/ext/audio_ports.cpp
+    src/wrapper/ext/audio_ports_config.cpp
     src/wrapper/ext/latency.cpp
     src/wrapper/ext/note_ports.cpp
     src/wrapper/ext/params.cpp
@@ -33,6 +34,8 @@ add_library(clap-validator-plugins MODULE
     src/wrapper/ext/voice_info.cpp
     src/plugins/common/sine_engine.cpp
     src/plugins/effect/effect.cpp
+    src/plugins/multiout_fx/multiout_fx.cpp
+    src/plugins/multiout_gen/multiout_gen.cpp
     src/plugins/notefx/notefx.cpp
     src/plugins/sidechain_synth/sidechain_synth.cpp
     src/plugins/synth/synth.cpp)

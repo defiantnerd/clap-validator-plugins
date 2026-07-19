@@ -6,6 +6,8 @@
 #include <cstring>
 
 #include "plugins/effect/effect.h"
+#include "plugins/multiout_fx/multiout_fx.h"
+#include "plugins/multiout_gen/multiout_gen.h"
 #include "plugins/notefx/notefx.h"
 #include "plugins/sidechain_synth/sidechain_synth.h"
 #include "plugins/synth/synth.h"
@@ -19,6 +21,8 @@ const PluginEntry kEntries[] = {
     {&NoteFxPlugin::descriptor, &NoteFxPlugin::create},
     {&SynthPlugin::descriptor, &SynthPlugin::create},
     {&SidechainSynthPlugin::descriptor, &SidechainSynthPlugin::create},
+    {&MultiOutGenPlugin::descriptor, &MultiOutGenPlugin::create},
+    {&MultiOutFxPlugin::descriptor, &MultiOutFxPlugin::create},
 };
 
 } // namespace
