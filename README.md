@@ -20,6 +20,10 @@ through the host's `clap.log` extension with `CLAP_LOG_HOST_MISBEHAVING`.
 | Validator Sidechain Synth | `sidechain-synth` | note-ports (1 in), audio-ports (**non-main** stereo in "Sidechain" + main stereo out), params, state | latency, tail, voice-info | sine gated by sidechain level |
 | Validator MultiOut Gen | `multiout-gen` | audio-ports, audio-ports-config ("Stereo": 1 out; "Multi Out": main + 4 aux), params, state | note-ports | distinct sine pitch per port |
 | Validator MultiOut FX | `multiout-fx` | audio-ports (1 stereo in), audio-ports-config ("Stereo": 1 out; "Multi Out": main + 2 aux), params, state | note-ports | input fan-out |
+| Validator AudioPortsZero | `audioports-zero` | **audio-ports with 0 ports** in both directions, params, state | note-ports | none (sleeps) |
+| Validator Slow | `slow` | audio-ports (stereo in/out), params, state, latency | note-ports | passthrough |
+| Validator HostCheck | `hostcheck` | audio-ports (stereo in/out) **only** | **params, state** — first flavor with neither | passthrough |
+| Validator GUI | `gui` | audio-ports (stereo in/out), params, state, **gui** | note-ports | gain |
 
 Host-testing traps baked in:
 
@@ -33,6 +37,36 @@ Host-testing traps baked in:
 - **MultiOut Gen/FX**: port ids stay stable across configs (the main out keeps id 0 in both);
   each Gen output port emits a distinct pitch (A3, C#4, E4, G4, A4), so routing is verifiable
   by ear or meter. `select()` correctly fails while the plugin is active.
+- **AudioPortsZero**: the counterpart to NoteFX — the audio-ports extension is *present* but
+  reports zero ports in both directions.
+- **Slow**: `state save/load` block for the `Slowness` parameter's duration (default 2 s),
+  `activate` blocks 250 ms, latency reports one full second. Hosts must not freeze or time out.
+- **HostCheck**: probes ~22 host-side extensions on `init` and logs present/absent, exercises
+  `request_callback()`, and records every lifecycle transition. Also deliberately has neither
+  params nor state.
+- **GUI**: see below.
+
+## The GUI
+
+The `Validator GUI` plugin implements `clap.gui` with **zero framework/library dependencies**:
+plain Cocoa on macOS (Objective-C++), raw Win32 (user32/gdi32/comctl32) on Windows, and raw
+Xlib on Linux. Each platform view shows:
+
+- the plugin's **parameters at the top** — editable sliders that emit proper CLAP
+  `gesture_begin` / `param_value` / `gesture_end` events through a thread-safe queue plus
+  `clap_host_params.request_flush()`, so the host's GUI→automation path gets exercised;
+- below, a **≥20-line log pane in a monospaced font**. *All* log output of the instance is
+  guaranteed to appear there: every logging path (host `clap.log` delivery, stderr fallback,
+  thread-check violation reports, lifecycle events) flows through a per-instance `LogBuffer`
+  first, and the view renders from that buffer at ~10 Hz. Every `gui_*` call the host makes is
+  logged too, so the editor live-documents the host's GUI protocol usage.
+
+Embedded windows only (per spec recommendation); floating-window requests are rejected and
+logged. Platform status: **macOS build- and runtime-verified** (embedded in a test host,
+screenshot-checked); **Windows cross-compile-verified** with MinGW; **Linux/X11
+compile-verified** against Xlib headers — runtime verification on real Windows/Linux hosts
+pending. On Linux the flavor is compiled out (with a CMake status message) if X11 development
+headers are absent.
 
 ## Building
 
@@ -81,9 +115,7 @@ extension/port/param profile.
 2. Add the source file to `CMakeLists.txt` and one `{&Class::descriptor, &Class::create}`
    line to `src/registry.cpp`.
 
-Planned future flavors: `audioports-zero` (extension present, zero ports), `surround`,
-`gui`, `preset` (preset-load), `slow` (slow state save / high latency), `hostcheck`
-(aggressively exercises host extensions).
+Planned future flavors: `surround`, `preset` (preset-load + preset-discovery factory).
 
 ## License
 
