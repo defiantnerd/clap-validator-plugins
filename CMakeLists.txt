@@ -18,7 +18,12 @@ FetchContent_Declare(clap
 FetchContent_MakeAvailable(clap)
 
 add_library(clap-validator-plugins MODULE
-    src/entry.cpp)
+    src/entry.cpp
+    src/registry.cpp
+    src/wrapper/plugin.cpp
+    src/wrapper/threadcheck.cpp
+    src/wrapper/ext/audio_ports.cpp
+    src/plugins/effect/effect.cpp)
 
 target_link_libraries(clap-validator-plugins PRIVATE clap)
 target_include_directories(clap-validator-plugins PRIVATE src)

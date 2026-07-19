@@ -1,25 +1,32 @@
-// CLAP entry point and plugin factory.
-// M0 skeleton: factory exposes zero plugins; the registry lands in M1.
+// CLAP entry point and plugin factory, backed by the registry in registry.cpp.
 
 #include <clap/clap.h>
 
 #include <cstring>
 
+#include "registry.h"
+
 namespace {
 
 uint32_t factoryGetPluginCount(const clap_plugin_factory*) {
-    return 0;
+    uint32_t count = 0;
+    cvp::registryEntries(&count);
+    return count;
 }
 
-const clap_plugin_descriptor* factoryGetPluginDescriptor(const clap_plugin_factory*, uint32_t) {
-    return nullptr;
+const clap_plugin_descriptor* factoryGetPluginDescriptor(const clap_plugin_factory*,
+                                                         uint32_t index) {
+    uint32_t count = 0;
+    const auto* entries = cvp::registryEntries(&count);
+    return index < count ? entries[index].descriptor : nullptr;
 }
 
 const clap_plugin* factoryCreatePlugin(const clap_plugin_factory*, const clap_host* host,
-                                       const char*) {
+                                       const char* pluginId) {
     if (!host || !clap_version_is_compatible(host->clap_version))
         return nullptr;
-    return nullptr;
+    const auto* entry = cvp::registryFind(pluginId);
+    return entry ? entry->create(host) : nullptr;
 }
 
 const clap_plugin_factory kFactory = {
