@@ -17,6 +17,7 @@
 #include "plugins/preset/preset_plugin.h"
 #include "plugins/sidechain_synth/sidechain_synth.h"
 #include "plugins/slow/slow.h"
+#include "plugins/surround/surround.h"
 #include "plugins/synth/synth.h"
 
 namespace cvp {
@@ -34,6 +35,7 @@ const PluginEntry kEntries[] = {
     {&SlowPlugin::descriptor, &SlowPlugin::create},
     {&HostCheckPlugin::descriptor, &HostCheckPlugin::create},
     {&PresetPlugin::descriptor, &PresetPlugin::create},
+    {&SurroundPlugin::descriptor, &SurroundPlugin::create},
 #if defined(CVP_HAS_GUI) && CVP_HAS_GUI
     {&GuiPlugin::descriptor, &GuiPlugin::create},
 #endif

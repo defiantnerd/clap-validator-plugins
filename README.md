@@ -25,6 +25,7 @@ through the host's `clap.log` extension with `CLAP_LOG_HOST_MISBEHAVING`.
 | Validator HostCheck | `hostcheck` | audio-ports (stereo in/out) **only** | **params, state** — first flavor with neither | passthrough |
 | Validator GUI | `gui` | audio-ports (stereo in/out), params, state, **gui**, remote-controls (**2 pages**) | note-ports | gain |
 | Validator Preset | `preset` | audio-ports (stereo in/out), params (Gain, Color), state, **preset-load**, remote-controls | note-ports | gain |
+| Validator Surround | `surround` | audio-ports (surround-typed main in/out), **surround**, **configurable-audio-ports** (Quad 4.0 / 5.1 / 7.1), params (Gain, Solo Channel), state, remote-controls | note-ports, **mono/stereo entirely** | passthrough with channel solo |
 
 Host-testing traps baked in:
 
@@ -58,6 +59,13 @@ Host-testing traps baked in:
   Two sample files are created there on first discovery (never overwritten). Loading applies
   the values, calls `clap_host_params.rescan(CLAP_PARAM_RESCAN_VALUES)` and notifies
   `clap_host_preset_load.loaded()`; failures report through `on_error()`.
+- **Surround**: `is_channel_mask_supported()` accepts exactly the three layout masks — mono and
+  stereo are rejected, in the mask check and in `configurable-audio-ports` requests alike, so
+  hosts cannot fall back to stereo. The host switches layouts (deactivated only) via
+  `configurable-audio-ports`; requesting one side switches both (ports stay symmetric), and
+  supplied channel maps must match the plugin's. The **Solo Channel** parameter selects a
+  surround channel *identifier* (FL/FR/FC/LFE/BL/BR/SL/SR), not an index — soloing FC means
+  front-center in every layout, so a wrong host channel map is immediately audible.
 - **GUI**: see below.
 
 ## The GUI

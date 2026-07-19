@@ -33,6 +33,7 @@ add_library(clap-validator-plugins MODULE
     src/wrapper/threadcheck.cpp
     src/wrapper/ext/audio_ports.cpp
     src/wrapper/ext/audio_ports_config.cpp
+    src/wrapper/ext/configurable_audio_ports.cpp
     src/wrapper/ext/latency.cpp
     src/wrapper/ext/note_ports.cpp
     src/wrapper/ext/params.cpp
@@ -40,6 +41,7 @@ add_library(clap-validator-plugins MODULE
     src/wrapper/ext/remote_controls.cpp
     src/wrapper/ext/render.cpp
     src/wrapper/ext/state.cpp
+    src/wrapper/ext/surround.cpp
     src/wrapper/ext/tail.cpp
     src/wrapper/ext/voice_info.cpp
     src/plugins/audioports_zero/audioports_zero.cpp
@@ -47,6 +49,7 @@ add_library(clap-validator-plugins MODULE
     src/plugins/effect/effect.cpp
     src/plugins/hostcheck/hostcheck.cpp
     src/plugins/slow/slow.cpp
+    src/plugins/surround/surround.cpp
     src/plugins/multiout_fx/multiout_fx.cpp
     src/plugins/multiout_gen/multiout_gen.cpp
     src/plugins/notefx/notefx.cpp
