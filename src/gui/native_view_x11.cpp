@@ -1,0 +1,463 @@
+// Linux native view — raw Xlib, no toolkit. A dedicated UI thread owns its
+// own Display connection (every X call is confined to that thread, so
+// XInitThreads() is not needed and must not be used). The CLAP main thread
+// communicates via a mutex-guarded command queue woken through a self-pipe.
+//
+// Layout: one row per parameter (name | self-drawn slider | value text) on
+// top, below a >=20-line log pane in the core monospaced font, redrawn when
+// the LogBuffer version changes (checked on a ~100 ms tick).
+//
+// NOTE: written on macOS without compile verification — see README.
+
+#if !defined(_WIN32) && !defined(__APPLE__)
+
+#include <X11/Xatom.h>
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+
+#include <fcntl.h>
+#include <sys/select.h>
+#include <unistd.h>
+
+#include <atomic>
+#include <cstdio>
+#include <cstring>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <vector>
+
+#include "gui/gui_model.h"
+#include "gui/native_view.h"
+#include "wrapper/logbuffer.h"
+
+namespace cvp {
+
+namespace {
+
+constexpr int kLabelWidth = 120;
+constexpr int kValueWidth = 90;
+
+class X11NativeView final : public NativeView {
+    struct Command {
+        enum class Kind { Resize, Show, Hide, Quit } kind;
+        uint32_t width = 0;
+        uint32_t height = 0;
+    };
+
+public:
+    explicit X11NativeView(GuiModel& model) : _model(model) {
+        const uint32_t count = _model.guiParamCount();
+        for (uint32_t i = 0; i < count; ++i) {
+            GuiModel::ParamDesc desc{};
+            if (_model.guiParamDesc(i, &desc))
+                _params.push_back(desc);
+        }
+        _widthPx = scaled(kDefaultWidth);
+        _heightPx = scaled(minHeightFor(static_cast<uint32_t>(_params.size())));
+        _pipe[0] = _pipe[1] = -1;
+    }
+
+    ~X11NativeView() override {
+        if (_thread.joinable()) {
+            pushCommand({Command::Kind::Quit});
+            _thread.join();
+        }
+        if (_pipe[0] >= 0)
+            close(_pipe[0]);
+        if (_pipe[1] >= 0)
+            close(_pipe[1]);
+    }
+
+    bool attach(const clap_window* parent) noexcept override {
+        if (_thread.joinable() || !parent || !parent->x11)
+            return false;
+        if (pipe2(_pipe, O_CLOEXEC) != 0)
+            return false;
+        _parentXid = parent->x11;
+        _thread = std::thread([this] { uiThread(); });
+        return true;
+    }
+
+    void getSize(uint32_t* width, uint32_t* height) noexcept override {
+        *width = _widthPx.load(std::memory_order_relaxed);
+        *height = _heightPx.load(std::memory_order_relaxed);
+    }
+
+    bool setSize(uint32_t width, uint32_t height) noexcept override {
+        _widthPx.store(width, std::memory_order_relaxed);
+        _heightPx.store(height, std::memory_order_relaxed);
+        if (_thread.joinable())
+            pushCommand({Command::Kind::Resize, width, height});
+        return true;
+    }
+
+    void setScale(double scale) noexcept override {
+        if (scale <= 0.0)
+            return;
+        const bool resize = !_thread.joinable();
+        _scale = scale;
+        if (resize) {
+            _widthPx.store(scaled(kDefaultWidth), std::memory_order_relaxed);
+            _heightPx.store(scaled(minHeightFor(static_cast<uint32_t>(_params.size()))),
+                            std::memory_order_relaxed);
+        }
+    }
+
+    void show() noexcept override {
+        if (_thread.joinable())
+            pushCommand({Command::Kind::Show});
+    }
+
+    void hide() noexcept override {
+        if (_thread.joinable())
+            pushCommand({Command::Kind::Hide});
+    }
+
+private:
+    uint32_t scaled(uint32_t logical) const noexcept {
+        return static_cast<uint32_t>(logical * _scale + 0.5);
+    }
+
+    void pushCommand(const Command& command) {
+        {
+            std::lock_guard<std::mutex> lock(_commandMutex);
+            _commands.push_back(command);
+        }
+        const char byte = 1;
+        [[maybe_unused]] ssize_t written = write(_pipe[1], &byte, 1);
+    }
+
+    // ---------- everything below runs exclusively on the UI thread ----------
+
+    void uiThread() {
+        _display = XOpenDisplay(nullptr);
+        if (!_display)
+            return;
+        const int screen = DefaultScreen(_display);
+        const uint32_t width = _widthPx.load(std::memory_order_relaxed);
+        const uint32_t height = _heightPx.load(std::memory_order_relaxed);
+
+        _background = allocColor(0xEE, 0xEE, 0xEE);
+        _trackColor = allocColor(0xC0, 0xC0, 0xC0);
+        _fillColor = allocColor(0x4A, 0x78, 0xB0);
+        _textColor = BlackPixel(_display, screen);
+
+        _window = XCreateSimpleWindow(_display, static_cast<Window>(_parentXid), 0, 0, width,
+                                      height, 0, _textColor, _background);
+
+        // _XEMBED_INFO: version 0, flags 1 (XEMBED_MAPPED) — some GtkSocket/
+        // Qt-based hosts check for it; the full handshake is not needed for a
+        // mouse-only UI.
+        const Atom xembedInfo = XInternAtom(_display, "_XEMBED_INFO", False);
+        const long info[2] = {0, 1};
+        XChangeProperty(_display, _window, xembedInfo, xembedInfo, 32, PropModeReplace,
+                        reinterpret_cast<const unsigned char*>(info), 2);
+
+        XSelectInput(_display, _window,
+                     ExposureMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask |
+                         StructureNotifyMask);
+
+        loadFont();
+        _gc = XCreateGC(_display, _window, 0, nullptr);
+        XMapWindow(_display, _window);
+        XFlush(_display);
+
+        const int xfd = ConnectionNumber(_display);
+        bool running = true;
+        while (running) {
+            fd_set readSet;
+            FD_ZERO(&readSet);
+            FD_SET(xfd, &readSet);
+            FD_SET(_pipe[0], &readSet);
+            timeval timeout{0, 100 * 1000}; // 100 ms tick
+            select((xfd > _pipe[0] ? xfd : _pipe[0]) + 1, &readSet, nullptr, nullptr, &timeout);
+
+            if (FD_ISSET(_pipe[0], &readSet)) {
+                char drainBuf[16];
+                while (read(_pipe[0], drainBuf, sizeof(drainBuf)) == sizeof(drainBuf)) {
+                }
+            }
+            running = processCommands();
+            if (!running)
+                break;
+            processXEvents();
+            tick();
+        }
+
+        if (_font)
+            XFreeFont(_display, _font);
+        if (_gc)
+            XFreeGC(_display, _gc);
+        if (!_windowDead && _window)
+            XDestroyWindow(_display, _window);
+        XCloseDisplay(_display);
+        _display = nullptr;
+    }
+
+    unsigned long allocColor(unsigned char r, unsigned char g, unsigned char b) {
+        XColor color{};
+        color.red = static_cast<unsigned short>(r << 8);
+        color.green = static_cast<unsigned short>(g << 8);
+        color.blue = static_cast<unsigned short>(b << 8);
+        color.flags = DoRed | DoGreen | DoBlue;
+        Colormap colormap = DefaultColormap(_display, DefaultScreen(_display));
+        if (XAllocColor(_display, colormap, &color))
+            return color.pixel;
+        return WhitePixel(_display, DefaultScreen(_display));
+    }
+
+    void loadFont() {
+        // Prefer a monospaced XLFD at roughly the scaled pixel size, fall
+        // back to the always-present "fixed".
+        char pattern[96];
+        std::snprintf(pattern, sizeof(pattern), "-*-fixed-medium-r-*-*-%u-*-*-*-*-*-iso8859-1",
+                      scaled(13));
+        _font = XLoadQueryFont(_display, pattern);
+        if (!_font)
+            _font = XLoadQueryFont(_display, "fixed");
+    }
+
+    bool processCommands() {
+        std::vector<Command> commands;
+        {
+            std::lock_guard<std::mutex> lock(_commandMutex);
+            commands.swap(_commands);
+        }
+        for (const auto& command : commands) {
+            switch (command.kind) {
+            case Command::Kind::Quit:
+                return false;
+            case Command::Kind::Resize:
+                if (!_windowDead) {
+                    XResizeWindow(_display, _window, command.width, command.height);
+                    _dirty = true;
+                }
+                break;
+            case Command::Kind::Show:
+                if (!_windowDead)
+                    XMapWindow(_display, _window);
+                break;
+            case Command::Kind::Hide:
+                if (!_windowDead)
+                    XUnmapWindow(_display, _window);
+                break;
+            }
+        }
+        if (!_windowDead)
+            XFlush(_display);
+        return true;
+    }
+
+    void processXEvents() {
+        while (!_windowDead && XPending(_display) > 0) {
+            XEvent event;
+            XNextEvent(_display, &event);
+            switch (event.type) {
+            case Expose:
+                if (event.xexpose.count == 0)
+                    _dirty = true;
+                break;
+            case ConfigureNotify:
+                _widthPx.store(static_cast<uint32_t>(event.xconfigure.width),
+                               std::memory_order_relaxed);
+                _heightPx.store(static_cast<uint32_t>(event.xconfigure.height),
+                                std::memory_order_relaxed);
+                _dirty = true;
+                break;
+            case DestroyNotify:
+                // Host destroyed the parent (and thus us) without gui->destroy.
+                _windowDead = true;
+                break;
+            case ButtonPress:
+                if (event.xbutton.button == Button1)
+                    onMouseDown(event.xbutton.x, event.xbutton.y);
+                break;
+            case MotionNotify:
+                if (_dragParam >= 0)
+                    onMouseDrag(event.xmotion.x);
+                break;
+            case ButtonRelease:
+                if (event.xbutton.button == Button1 && _dragParam >= 0) {
+                    onMouseDrag(event.xbutton.x);
+                    _model.guiEndGesture(_params[static_cast<size_t>(_dragParam)].id);
+                    _dragParam = -1;
+                }
+                break;
+            default:
+                break;
+            }
+        }
+    }
+
+    // Slider track geometry for row i.
+    void trackRect(size_t i, int* x, int* y, int* w, int* h) const {
+        const int pad = static_cast<int>(scaled(kPadding));
+        const int rowH = static_cast<int>(scaled(kRowHeight));
+        const int labelW = static_cast<int>(scaled(kLabelWidth));
+        const int valueW = static_cast<int>(scaled(kValueWidth));
+        const int width = static_cast<int>(_widthPx.load(std::memory_order_relaxed));
+        *x = pad + labelW + 6;
+        *y = pad + static_cast<int>(i) * rowH + rowH / 2 - 4;
+        *w = width - labelW - valueW - 3 * pad - 12;
+        *h = 8;
+    }
+
+    void onMouseDown(int mouseX, int mouseY) {
+        for (size_t i = 0; i < _params.size(); ++i) {
+            int x, y, w, h;
+            trackRect(i, &x, &y, &w, &h);
+            if (mouseX >= x && mouseX <= x + w && mouseY >= y - 6 && mouseY <= y + h + 6) {
+                _dragParam = static_cast<int>(i);
+                _model.guiBeginGesture(_params[i].id);
+                onMouseDrag(mouseX);
+                return;
+            }
+        }
+    }
+
+    void onMouseDrag(int mouseX) {
+        const auto index = static_cast<size_t>(_dragParam);
+        const auto& desc = _params[index];
+        int x, y, w, h;
+        trackRect(index, &x, &y, &w, &h);
+        double fraction = w > 0 ? static_cast<double>(mouseX - x) / w : 0.0;
+        fraction = fraction < 0.0 ? 0.0 : (fraction > 1.0 ? 1.0 : fraction);
+        double value = desc.minValue + (desc.maxValue - desc.minValue) * fraction;
+        if (desc.stepped)
+            value = desc.minValue +
+                    static_cast<int>((value - desc.minValue) + 0.5); // snap to steps
+        _model.guiSetValue(desc.id, value);
+        _dirty = true;
+    }
+
+    void tick() {
+        if (_windowDead)
+            return;
+        const uint64_t version = _model.guiLog().version();
+        if (version != _logVersion) {
+            _logVersion = version;
+            _dirty = true;
+        }
+        // Param values may change from host automation — redraw when moved.
+        for (size_t i = 0; i < _params.size(); ++i) {
+            const double value = _model.guiParamValue(_params[i].id);
+            if (i >= _lastValues.size() || value != _lastValues[i]) {
+                _dirty = true;
+                break;
+            }
+        }
+        if (_dirty) {
+            _dirty = false;
+            redraw();
+        }
+    }
+
+    void redraw() {
+        const uint32_t width = _widthPx.load(std::memory_order_relaxed);
+        const uint32_t height = _heightPx.load(std::memory_order_relaxed);
+        Pixmap buffer = XCreatePixmap(_display, _window, width, height,
+                                      static_cast<unsigned>(DefaultDepth(
+                                          _display, DefaultScreen(_display))));
+
+        XSetForeground(_display, _gc, _background);
+        XFillRectangle(_display, buffer, _gc, 0, 0, width, height);
+        if (_font)
+            XSetFont(_display, _gc, _font->fid);
+
+        const int pad = static_cast<int>(scaled(kPadding));
+        const int rowH = static_cast<int>(scaled(kRowHeight));
+        const int fontAscent = _font ? _font->ascent : 10;
+        const int lineH = _font ? _font->ascent + _font->descent + 2 : 15;
+
+        _lastValues.resize(_params.size());
+        char text[96];
+        for (size_t i = 0; i < _params.size(); ++i) {
+            const auto& desc = _params[i];
+            const double value = _model.guiParamValue(desc.id);
+            _lastValues[i] = value;
+            const int rowY = pad + static_cast<int>(i) * rowH;
+
+            XSetForeground(_display, _gc, _textColor);
+            XDrawString(_display, buffer, _gc, pad, rowY + rowH / 2 + fontAscent / 2, desc.name,
+                        static_cast<int>(std::strlen(desc.name)));
+
+            int x, y, w, h;
+            trackRect(i, &x, &y, &w, &h);
+            XSetForeground(_display, _gc, _trackColor);
+            XFillRectangle(_display, buffer, _gc, x, y, static_cast<unsigned>(w),
+                           static_cast<unsigned>(h));
+            const double range = desc.maxValue - desc.minValue;
+            const double fraction = range > 0.0 ? (value - desc.minValue) / range : 0.0;
+            XSetForeground(_display, _gc, _fillColor);
+            XFillRectangle(_display, buffer, _gc, x, y,
+                           static_cast<unsigned>(w * fraction), static_cast<unsigned>(h));
+
+            _model.guiParamValueText(desc.id, value, text, sizeof(text));
+            XSetForeground(_display, _gc, _textColor);
+            const int textWidth =
+                _font ? XTextWidth(_font, text, static_cast<int>(std::strlen(text))) : 0;
+            XDrawString(_display, buffer, _gc, static_cast<int>(width) - pad - textWidth,
+                        rowY + rowH / 2 + fontAscent / 2, text,
+                        static_cast<int>(std::strlen(text)));
+        }
+
+        // Log pane: white background, last lines that fit, bottom-anchored.
+        const int logTop = pad + static_cast<int>(_params.size()) * rowH + pad;
+        const int logHeight = static_cast<int>(height) - logTop - pad;
+        XSetForeground(_display, _gc, WhitePixel(_display, DefaultScreen(_display)));
+        XFillRectangle(_display, buffer, _gc, pad, logTop, width - 2 * pad,
+                       static_cast<unsigned>(logHeight));
+        XSetForeground(_display, _gc, _textColor);
+
+        const auto lines = _model.guiLog().snapshot();
+        const int visibleLines = logHeight / lineH;
+        const size_t first =
+            lines.size() > static_cast<size_t>(visibleLines) ? lines.size() - visibleLines : 0;
+        int textY = logTop + fontAscent + 2;
+        for (size_t i = first; i < lines.size(); ++i) {
+            XDrawString(_display, buffer, _gc, pad + 4, textY, lines[i].c_str(),
+                        static_cast<int>(lines[i].size()));
+            textY += lineH;
+        }
+
+        XCopyArea(_display, buffer, _window, _gc, 0, 0, width, height, 0, 0);
+        XFreePixmap(_display, buffer);
+        XFlush(_display);
+    }
+
+    GuiModel& _model;
+    std::vector<GuiModel::ParamDesc> _params;
+    std::vector<double> _lastValues;
+
+    // Shared with the CLAP main thread:
+    std::atomic<uint32_t> _widthPx{0};
+    std::atomic<uint32_t> _heightPx{0};
+    std::mutex _commandMutex;
+    std::vector<Command> _commands;
+    int _pipe[2];
+    unsigned long _parentXid = 0;
+    double _scale = 1.0;
+    std::thread _thread;
+
+    // UI-thread only:
+    Display* _display = nullptr;
+    Window _window = 0;
+    GC _gc = nullptr;
+    XFontStruct* _font = nullptr;
+    unsigned long _background = 0, _trackColor = 0, _fillColor = 0, _textColor = 0;
+    bool _windowDead = false;
+    bool _dirty = true;
+    int _dragParam = -1;
+    uint64_t _logVersion = ~0ull;
+};
+
+} // namespace
+
+std::unique_ptr<NativeView> createNativeView(GuiModel& model) {
+    return std::make_unique<X11NativeView>(model);
+}
+
+} // namespace cvp
+
+#endif // !_WIN32 && !__APPLE__
