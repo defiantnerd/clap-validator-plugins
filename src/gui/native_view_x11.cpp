@@ -29,6 +29,7 @@
 
 #include "gui/gui_model.h"
 #include "gui/native_view.h"
+#include "gui/transport_format.h"
 #include "wrapper/logbuffer.h"
 
 namespace cvp {
@@ -308,7 +309,7 @@ private:
         const int valueW = static_cast<int>(scaled(kValueWidth));
         const int width = static_cast<int>(_widthPx.load(std::memory_order_relaxed));
         *x = pad + labelW + 6;
-        *y = pad + static_cast<int>(i) * rowH + rowH / 2 - 4;
+        *y = static_cast<int>(scaled(paramsTopFor())) + static_cast<int>(i) * rowH + rowH / 2 - 4;
         *w = width - labelW - valueW - 3 * pad - 12;
         *h = 8;
     }
@@ -412,6 +413,12 @@ private:
     void tick() {
         if (_windowDead)
             return;
+        TransportLines transport = formatTransport(_model.guiTransport());
+        if (transport.line1 != _transportLines.line1 ||
+            transport.line2 != _transportLines.line2) {
+            _transportLines = std::move(transport);
+            _dirty = true;
+        }
         const uint64_t version = _model.guiLog().version();
         if (version != _logVersion) {
             _logVersion = version;
@@ -448,13 +455,23 @@ private:
         const int fontAscent = _font ? _font->ascent : 10;
         const int lineH = _font ? _font->ascent + _font->descent + 2 : 15;
 
+        // Transport section (two lines at the very top).
+        XSetForeground(_display, _gc, _textColor);
+        const int transportLineH = _font ? _font->ascent + _font->descent + 3 : 17;
+        XDrawString(_display, buffer, _gc, pad, pad + fontAscent, _transportLines.line1.c_str(),
+                    static_cast<int>(_transportLines.line1.size()));
+        XDrawString(_display, buffer, _gc, pad, pad + transportLineH + fontAscent,
+                    _transportLines.line2.c_str(),
+                    static_cast<int>(_transportLines.line2.size()));
+
+        const int paramsTop = static_cast<int>(scaled(paramsTopFor()));
         _lastValues.resize(_params.size());
         char text[96];
         for (size_t i = 0; i < _params.size(); ++i) {
             const auto& desc = _params[i];
             const double value = _model.guiParamValue(desc.id);
             _lastValues[i] = value;
-            const int rowY = pad + static_cast<int>(i) * rowH;
+            const int rowY = paramsTop + static_cast<int>(i) * rowH;
 
             XSetForeground(_display, _gc, _textColor);
             XDrawString(_display, buffer, _gc, pad, rowY + rowH / 2 + fontAscent / 2, desc.name,
@@ -549,6 +566,7 @@ private:
     bool _dirty = true;
     int _dragParam = -1;
     uint64_t _logVersion = ~0ull;
+    TransportLines _transportLines;
 };
 
 } // namespace

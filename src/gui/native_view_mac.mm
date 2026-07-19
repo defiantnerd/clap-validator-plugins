@@ -11,6 +11,7 @@
 
 #include "gui/gui_model.h"
 #include "gui/native_view.h"
+#include "gui/transport_format.h"
 #include "wrapper/logbuffer.h"
 
 namespace {
@@ -25,6 +26,8 @@ constexpr CGFloat kValueWidth = 90.0;
     NSMutableArray<NSSlider*>* _sliders;
     NSMutableArray<NSTextField*>* _nameLabels;
     NSMutableArray<NSTextField*>* _valueLabels;
+    NSTextField* _transportLine1;
+    NSTextField* _transportLine2;
     NSButton* _copyButton;
     NSScrollView* _logScroll;
     NSTextView* _logView;
@@ -54,6 +57,16 @@ constexpr CGFloat kValueWidth = 90.0;
     _sliders = [NSMutableArray array];
     _nameLabels = [NSMutableArray array];
     _valueLabels = [NSMutableArray array];
+
+    NSFont* transportFont = [NSFont monospacedDigitSystemFontOfSize:11
+                                                              weight:NSFontWeightMedium];
+    _transportLine1 = [NSTextField labelWithString:@""];
+    _transportLine1.font = transportFont;
+    [self addSubview:_transportLine1];
+    _transportLine2 = [NSTextField labelWithString:@""];
+    _transportLine2.font = transportFont;
+    _transportLine2.textColor = [NSColor secondaryLabelColor];
+    [self addSubview:_transportLine2];
 
     for (uint32_t i = 0; i < paramCount; ++i) {
         cvp::GuiModel::ParamDesc desc{};
@@ -124,8 +137,12 @@ constexpr CGFloat kValueWidth = 90.0;
     const CGFloat width = self.frame.size.width;
     const CGFloat height = self.frame.size.height;
 
+    _transportLine1.frame = NSMakeRect(pad, pad, width - 2 * pad, 17);
+    _transportLine2.frame = NSMakeRect(pad, pad + 18, width - 2 * pad, 17);
+
+    const CGFloat paramsTop = cvp::NativeView::paramsTopFor();
     for (size_t i = 0; i < _params.size(); ++i) {
-        const CGFloat y = pad + static_cast<CGFloat>(i) * rowH;
+        const CGFloat y = paramsTop + static_cast<CGFloat>(i) * rowH;
         NSSlider* slider = _sliders[i];
         NSTextField* name = _nameLabels[i];
         NSTextField* value = _valueLabels[i];
@@ -177,6 +194,10 @@ constexpr CGFloat kValueWidth = 90.0;
 - (void)tick {
     if (!_model)
         return;
+
+    const cvp::TransportLines transport = cvp::formatTransport(_model->guiTransport());
+    _transportLine1.stringValue = [NSString stringWithUTF8String:transport.line1.c_str()];
+    _transportLine2.stringValue = [NSString stringWithUTF8String:transport.line2.c_str()];
 
     char text[96];
     for (size_t i = 0; i < _params.size(); ++i) {

@@ -434,6 +434,43 @@ bool GuiPlugin::remoteControlsPage(uint32_t pageIndex,
     return true;
 }
 
+// ---- transport snapshot ----
+
+void GuiPlugin::storeTransport(const clap_event_transport* transport) noexcept {
+    GuiModel::TransportInfo info;
+    info.seen = true;
+    info.provided = transport != nullptr;
+    if (transport) {
+        info.flags = transport->flags;
+        info.tempo = transport->tempo;
+        info.songPosBeats =
+            static_cast<double>(transport->song_pos_beats) / CLAP_BEATTIME_FACTOR;
+        info.songPosSeconds =
+            static_cast<double>(transport->song_pos_seconds) / CLAP_SECTIME_FACTOR;
+        info.loopStartBeats =
+            static_cast<double>(transport->loop_start_beats) / CLAP_BEATTIME_FACTOR;
+        info.loopEndBeats = static_cast<double>(transport->loop_end_beats) / CLAP_BEATTIME_FACTOR;
+        info.barStartBeats = static_cast<double>(transport->bar_start) / CLAP_BEATTIME_FACTOR;
+        info.barNumber = transport->bar_number;
+        info.tsigNum = transport->tsig_num;
+        info.tsigDenom = transport->tsig_denom;
+    }
+    _transportSeq.fetch_add(1, std::memory_order_acq_rel); // odd: write in progress
+    _transportData = info;
+    _transportSeq.fetch_add(1, std::memory_order_release);
+}
+
+GuiModel::TransportInfo GuiPlugin::guiTransport() noexcept {
+    GuiModel::TransportInfo out;
+    uint32_t before = 0, after = 0;
+    do {
+        before = _transportSeq.load(std::memory_order_acquire);
+        out = _transportData;
+        after = _transportSeq.load(std::memory_order_acquire);
+    } while (before != after || (before & 1));
+    return out;
+}
+
 // ---- GuiModel ----
 
 uint32_t GuiPlugin::guiParamCount() noexcept {
@@ -496,11 +533,19 @@ clap_process_status GuiPlugin::process(const clap_process* process) noexcept {
     if (process->audio_inputs_count < 1 || process->audio_outputs_count < 1)
         return CLAP_PROCESS_ERROR;
 
+    const clap_event_transport* transport = process->transport;
     if (process->in_events) {
         const uint32_t eventCount = process->in_events->size(process->in_events);
-        for (uint32_t i = 0; i < eventCount; ++i)
-            applyParamEvent(process->in_events->get(process->in_events, i));
+        for (uint32_t i = 0; i < eventCount; ++i) {
+            const auto* header = process->in_events->get(process->in_events, i);
+            if (header->space_id == CLAP_CORE_EVENT_SPACE_ID &&
+                header->type == CLAP_EVENT_TRANSPORT)
+                transport = reinterpret_cast<const clap_event_transport*>(header);
+            else
+                applyParamEvent(header);
+        }
     }
+    storeTransport(transport);
     _paramQueue.drain(process->out_events, [this](clap_id id, double value) {
         if (auto* storage = paramStorage(id))
             storage->store(value, std::memory_order_relaxed);

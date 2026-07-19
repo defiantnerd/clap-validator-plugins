@@ -82,6 +82,7 @@ else()
 endif()
 if(CVP_HAS_GUI)
     target_sources(clap-validator-plugins PRIVATE
+        src/gui/transport_format.cpp
         src/wrapper/ext/gui.cpp
         src/plugins/gui/gui_plugin.cpp)
     target_compile_definitions(clap-validator-plugins PRIVATE CVP_HAS_GUI=1)

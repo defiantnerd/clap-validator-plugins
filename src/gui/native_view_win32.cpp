@@ -23,6 +23,7 @@
 
 #include "gui/gui_model.h"
 #include "gui/native_view.h"
+#include "gui/transport_format.h"
 #include "wrapper/logbuffer.h"
 
 namespace cvp {
@@ -179,6 +180,14 @@ private:
                                 FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                 CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, L"Consolas");
 
+        for (int i = 0; i < 2; ++i) {
+            _transportLines[i] = CreateWindowExW(0, L"STATIC", L"",
+                                                 WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, 0, 0,
+                                                 10, 10, _hwnd, nullptr, inst, nullptr);
+            SendMessageW(_transportLines[i], WM_SETFONT, reinterpret_cast<WPARAM>(_monoFont),
+                         TRUE);
+        }
+
         for (const auto& desc : _params) {
             HWND name = CreateWindowExW(0, L"STATIC", toWide(desc.name).c_str(),
                                         WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, 0, 0, 10, 10,
@@ -222,8 +231,14 @@ private:
         const int width = static_cast<int>(_widthPx);
         const int height = static_cast<int>(_heightPx);
 
+        const int transportLineH = static_cast<int>(scaled(17));
+        MoveWindow(_transportLines[0], pad, pad, width - 2 * pad, transportLineH, TRUE);
+        MoveWindow(_transportLines[1], pad, pad + transportLineH + 2, width - 2 * pad,
+                   transportLineH, TRUE);
+
+        const int paramsTop = static_cast<int>(scaled(paramsTopFor()));
         for (size_t i = 0; i < _params.size(); ++i) {
-            const int y = pad + static_cast<int>(i) * rowH;
+            const int y = paramsTop + static_cast<int>(i) * rowH;
             MoveWindow(_nameLabels[i], pad, y + 4, labelW, rowH - 8, TRUE);
             MoveWindow(_sliders[i], pad + labelW + 6, y + 2,
                        width - labelW - valueW - 3 * pad - 12, rowH - 4, TRUE);
@@ -315,6 +330,10 @@ private:
     }
 
     void tick() {
+        const TransportLines transport = formatTransport(_model.guiTransport());
+        SetWindowTextW(_transportLines[0], toWide(transport.line1.c_str()).c_str());
+        SetWindowTextW(_transportLines[1], toWide(transport.line2.c_str()).c_str());
+
         char text[96];
         for (size_t i = 0; i < _params.size(); ++i) {
             const auto& desc = _params[i];
@@ -387,6 +406,7 @@ private:
     std::vector<HWND> _sliders;
     std::vector<HWND> _valueLabels;
     HWND _hwnd = nullptr;
+    HWND _transportLines[2] = {nullptr, nullptr};
     HWND _copyButton = nullptr;
     HWND _logEdit = nullptr;
     HFONT _uiFont = nullptr;

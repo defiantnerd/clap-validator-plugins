@@ -83,6 +83,7 @@ protected:
                             clap_remote_controls_page* page) noexcept override;
 
     // GuiModel
+    GuiModel::TransportInfo guiTransport() noexcept override;
     uint32_t guiParamCount() noexcept override;
     bool guiParamDesc(uint32_t index, ParamDesc* desc) noexcept override;
     double guiParamValue(clap_id paramId) noexcept override;
@@ -104,6 +105,7 @@ private:
     void applyParamEvent(const clap_event_header* header) noexcept;
     std::atomic<double>* paramStorage(clap_id paramId) noexcept;
     void adjustToMinimum(uint32_t* width, uint32_t* height) noexcept;
+    void storeTransport(const clap_event_transport* transport) noexcept; // [audio]
 
     std::atomic<double> _gainDb{0.0};
     std::atomic<double> _mode{0.0};
@@ -113,6 +115,11 @@ private:
     const clap_host_params* _hostParams = nullptr;
     std::unique_ptr<NativeView> _view;
     double _scale = 1.0;
+
+    // Seqlock: single writer (audio thread), readers retry on a torn/odd
+    // sequence — no lock on the audio path.
+    std::atomic<uint32_t> _transportSeq{0};
+    GuiModel::TransportInfo _transportData;
 };
 
 } // namespace cvp

@@ -27,6 +27,23 @@ public:
         bool stepped;
     };
 
+    // Snapshot of the last clap_event_transport seen in process() —
+    // fixed-point beat/second values already converted to doubles.
+    struct TransportInfo {
+        bool seen = false;         // any transport received yet?
+        bool provided = false;     // last process() had a non-null transport?
+        uint32_t flags = 0;        // CLAP_TRANSPORT_* flags
+        double tempo = 0.0;        // BPM
+        double songPosBeats = 0.0;
+        double songPosSeconds = 0.0;
+        double loopStartBeats = 0.0;
+        double loopEndBeats = 0.0;
+        double barStartBeats = 0.0;
+        int32_t barNumber = 0;
+        uint16_t tsigNum = 0;
+        uint16_t tsigDenom = 0;
+    };
+
     virtual uint32_t guiParamCount() noexcept = 0;
     virtual bool guiParamDesc(uint32_t index, ParamDesc* desc) noexcept = 0;
     virtual double guiParamValue(clap_id paramId) noexcept = 0;
@@ -38,6 +55,9 @@ public:
     virtual void guiEndGesture(clap_id paramId) noexcept = 0;
 
     virtual LogBuffer& guiLog() noexcept = 0;
+
+    // Latest transport snapshot. [any-thread]
+    virtual TransportInfo guiTransport() noexcept = 0;
 };
 
 } // namespace cvp
