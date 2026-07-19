@@ -55,8 +55,11 @@ jobs:
         run: |
           curl -sL -o cv-asset "https://github.com/free-audio/clap-validator/releases/download/${CLAP_VALIDATOR_VERSION}/clap-validator-${CLAP_VALIDATOR_VERSION}-${{ matrix.validator_asset }}"
           mkdir -p cv
-          # bsdtar (macOS/Windows) handles .zip too; the Linux asset is .tar.gz.
-          tar -xf cv-asset -C cv
+          case "${{ matrix.validator_asset }}" in
+            # Git Bash's GNU tar can't read zip — use Windows' native bsdtar.
+            *.zip) "$SYSTEMROOT/System32/tar.exe" -xf cv-asset -C cv ;;
+            *) tar -xzf cv-asset -C cv ;;
+          esac
 
       - name: Validate
         shell: bash
