@@ -42,6 +42,26 @@ const InternalPreset* findInternalPreset(const char* loadKey) noexcept {
     return nullptr;
 }
 
+std::string presetDirectoryLocation() {
+#if defined(_WIN32)
+    return "/" + presetDirectory();
+#else
+    return presetDirectory();
+#endif
+}
+
+std::string locationToPath(const char* location) {
+    if (!location)
+        return {};
+    std::string path = location;
+#if defined(_WIN32)
+    // Strip the clap-style leading slash before a drive letter: "/C:\..." .
+    if (path.size() >= 3 && path[0] == '/' && path[2] == ':')
+        path.erase(0, 1);
+#endif
+    return path;
+}
+
 bool parsePresetFile(const char* path, PresetData* out) noexcept {
     std::ifstream file(path);
     if (!file.is_open())

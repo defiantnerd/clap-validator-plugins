@@ -31,7 +31,7 @@ bool providerInit(const clap_preset_discovery_provider* provider) {
 
     // Make sure hosts have real files to crawl (idempotent, never overwrites).
     const bool fileLocationUsable = preset::ensureSamplePresetFiles();
-    p->fileLocation = preset::presetDirectory();
+    p->fileLocation = preset::presetDirectoryLocation();
 
     const clap_preset_discovery_filetype filetype = {
         .name = "CVP Preset",
@@ -43,7 +43,8 @@ bool providerInit(const clap_preset_discovery_provider* provider) {
 
     // Only declare the FILE location when the directory actually exists —
     // declaring an uncrawlable location breaks host indexers (and this can
-    // legitimately happen in sandboxed hosts).
+    // legitimately happen in sandboxed hosts). A rejected FILE location is
+    // not fatal either: the internal presets remain available.
     if (fileLocationUsable) {
         const clap_preset_discovery_location fileLocation = {
             .flags = CLAP_PRESET_DISCOVERY_IS_USER_CONTENT,
@@ -51,8 +52,7 @@ bool providerInit(const clap_preset_discovery_provider* provider) {
             .kind = CLAP_PRESET_DISCOVERY_LOCATION_FILE,
             .location = p->fileLocation.c_str(),
         };
-        if (!p->indexer->declare_location(p->indexer, &fileLocation))
-            return false;
+        p->indexer->declare_location(p->indexer, &fileLocation);
     }
 
     const clap_preset_discovery_location pluginLocation = {
@@ -89,7 +89,8 @@ bool providerGetMetadata(const clap_preset_discovery_provider*, uint32_t locatio
 
     if (locationKind == CLAP_PRESET_DISCOVERY_LOCATION_FILE && location) {
         preset::PresetData data{};
-        if (!preset::parsePresetFile(location, &data)) {
+        const std::string path = preset::locationToPath(location);
+        if (!preset::parsePresetFile(path.c_str(), &data)) {
             if (receiver->on_error)
                 receiver->on_error(receiver, 0, "not a valid .cvpreset file");
             return false;

@@ -232,7 +232,8 @@ bool PresetPlugin::presetLoadFromLocation(uint32_t locationKind, const char* loc
             ok = true;
         }
     } else if (locationKind == CLAP_PRESET_DISCOVERY_LOCATION_FILE && location) {
-        ok = preset::parsePresetFile(location, &data);
+        const std::string path = preset::locationToPath(location);
+        ok = preset::parsePresetFile(path.c_str(), &data);
     }
 
     if (!ok) {

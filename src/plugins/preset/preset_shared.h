@@ -42,6 +42,15 @@ bool parsePresetFile(const char* path, PresetData* out) noexcept;
 // location (created on demand).
 std::string presetDirectory();
 
+// The directory in the form used for clap location strings. On Windows this
+// is "/C:\...": clap-validator requires a leading slash, although the 1.2.10
+// header says the location works with plain OS filesystem functions.
+std::string presetDirectoryLocation();
+
+// Converts a received clap location string back to an OS path — accepts both
+// the plain form and the leading-slash Windows form.
+std::string locationToPath(const char* location);
+
 // Creates the preset directory and, if absent, two sample .cvpreset files so
 // hosts have real files to crawl. Idempotent; never overwrites user files.
 // Returns false if the directory is not usable (e.g. sandboxed host) — the
