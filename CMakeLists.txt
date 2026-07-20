@@ -26,6 +26,8 @@ FetchContent_MakeAvailable(clap)
 add_library(clap-validator-plugins MODULE
     src/entry.cpp
     src/registry.cpp
+    src/wrapper/contract.cpp
+    src/wrapper/earlylog.cpp
     src/wrapper/hostinfo.cpp
     src/wrapper/logbuffer.cpp
     src/wrapper/plugin.cpp
@@ -89,7 +91,7 @@ if(CVP_HAS_GUI)
 endif()
 
 target_link_libraries(clap-validator-plugins PRIVATE clap)
-target_include_directories(clap-validator-plugins PRIVATE src)
+target_include_directories(clap-validator-plugins PRIVATE src include)
 target_compile_definitions(clap-validator-plugins PRIVATE
     $<$<BOOL:${CVP_THREAD_CHECKS}>:CVP_THREAD_CHECKS=1>)
 

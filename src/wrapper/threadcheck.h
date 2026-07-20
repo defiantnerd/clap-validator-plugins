@@ -6,6 +6,7 @@
 
 namespace cvp {
 
+class ContractMonitor;
 class LogBuffer;
 
 // Enforces CLAP's [main-thread]/[audio-thread] contracts at runtime.
@@ -20,11 +21,20 @@ class LogBuffer;
 class ThreadChecker {
 public:
     // logBuffer: instance log sink — violation reports land there in
-    // addition to the host log / stderr (may be null).
-    void onInit(const clap_host* host, LogBuffer* logBuffer) noexcept;
+    // addition to the host log / stderr (may be null). monitor: violation
+    // registry — authoritative findings are counted there as T01/T02 (may be
+    // null; heuristic findings stay log-only and are never counted).
+    void onInit(const clap_host* host, LogBuffer* logBuffer, ContractMonitor* monitor) noexcept;
 
     void assertMainThread(const char* function) const noexcept;
     void assertAudioThread(const char* function) const noexcept;
+
+    // Authoritative negatives via the host's clap.thread-check extension —
+    // for the state-dependent contracts (T03 params.flush, T04 tail.get).
+    // Both return false when the host lacks the extension: nothing can be
+    // confirmed, so callers must not flag anything.
+    bool confirmedNotMainThread() const noexcept;
+    bool confirmedNotAudioThread() const noexcept;
 
 private:
     // authoritative: the violation was confirmed by the host's own
@@ -37,6 +47,7 @@ private:
     const clap_host_thread_check* _hostCheck = nullptr;
     const clap_host_log* _hostLog = nullptr;
     LogBuffer* _logBuffer = nullptr;
+    ContractMonitor* _monitor = nullptr;
     std::thread::id _mainThread{};
 };
 

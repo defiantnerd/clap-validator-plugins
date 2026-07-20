@@ -45,7 +45,7 @@ bool HostCheckPlugin::init() noexcept {
     if (!host())
         return true;
     logToHost(CLAP_LOG_INFO, "hostcheck: calling host->request_callback()");
-    host()->request_callback(host());
+    requestCallback();
     return true;
 }
 

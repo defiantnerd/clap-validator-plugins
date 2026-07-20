@@ -4,13 +4,16 @@
 #include <cstdio>
 #include <cstring>
 
+#include "wrapper/contract.h"
 #include "wrapper/logbuffer.h"
 
 namespace cvp {
 
-void ThreadChecker::onInit(const clap_host* host, LogBuffer* logBuffer) noexcept {
+void ThreadChecker::onInit(const clap_host* host, LogBuffer* logBuffer,
+                           ContractMonitor* monitor) noexcept {
     _host = host;
     _logBuffer = logBuffer;
+    _monitor = monitor;
     _mainThread = std::this_thread::get_id();
     if (host) {
         _hostCheck =
@@ -39,6 +42,14 @@ void ThreadChecker::assertAudioThread(const char* function) const noexcept {
     // audio thread; skip rather than produce false positives.
 }
 
+bool ThreadChecker::confirmedNotMainThread() const noexcept {
+    return _hostCheck && _hostCheck->is_main_thread && !_hostCheck->is_main_thread(_host);
+}
+
+bool ThreadChecker::confirmedNotAudioThread() const noexcept {
+    return _hostCheck && _hostCheck->is_audio_thread && !_hostCheck->is_audio_thread(_host);
+}
+
 void ThreadChecker::report(const char* function, const char* expected,
                            bool authoritative) const noexcept {
     char msg[256];
@@ -52,6 +63,10 @@ void ThreadChecker::report(const char* function, const char* expected,
         _hostLog->log(_host, CLAP_LOG_HOST_MISBEHAVING, msg);
     else
         std::fprintf(stderr, "%s\n", msg);
+    // Only authoritative findings enter the violation registry — a heuristic
+    // mismatch may be a legal host choice, and the badge must not lie.
+    if (authoritative && _monitor)
+        _monitor->note(std::strcmp(expected, "main") == 0 ? Violation::T01 : Violation::T02, msg);
     if (authoritative)
         assert(false && "CLAP thread contract violated by host");
 }

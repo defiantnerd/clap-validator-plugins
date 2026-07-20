@@ -1,9 +1,51 @@
 #include "wrapper/plugin.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 
+#include <cvp/violations.h>
+
+#include "wrapper/earlylog.h"
+#include "wrapper/ext/audio_ports.h"
+#include "wrapper/ext/params.h"
+
 namespace cvp {
+
+namespace {
+
+// --- org.clap-validator.violations query extension ---------------------------
+
+static_assert(sizeof(cvp_violation_entry_t{}.last_message) == ContractMonitor::kMessageCapacity,
+              "query-extension message size must match the monitor's");
+
+uint32_t violationsTotal(const clap_plugin_t* p) {
+    return Plugin::from(p)->contract().total();
+}
+
+uint32_t violationsDistinct(const clap_plugin_t* p) {
+    return Plugin::from(p)->contract().distinct();
+}
+
+bool violationsGet(const clap_plugin_t* p, uint32_t index, cvp_violation_entry_t* entry) {
+    if (!entry)
+        return false;
+    return Plugin::from(p)->contract().getEntry(index, entry->code, &entry->count,
+                                                entry->last_message);
+}
+
+void violationsClear(const clap_plugin_t* p) {
+    Plugin::from(p)->contract().clear();
+}
+
+const cvp_plugin_violations_t kViolationsVtable = {
+    .total = violationsTotal,
+    .distinct = violationsDistinct,
+    .get = violationsGet,
+    .clear = violationsClear,
+};
+
+} // namespace
 
 Plugin::Plugin(const clap_plugin_descriptor* descriptor, const clap_host* host) : _host(host) {
     _plugin.desc = descriptor;
@@ -18,6 +60,7 @@ Plugin::Plugin(const clap_plugin_descriptor* descriptor, const clap_host* host) 
     _plugin.process = &sProcess;
     _plugin.get_extension = &sGetExtension;
     _plugin.on_main_thread = &sOnMainThread;
+    _contract.setup(host, &_logBuffer);
 }
 
 void Plugin::provideExtension(const char* extensionId, const void* vtable,
@@ -52,12 +95,62 @@ void Plugin::logLifecycle(const char* message) noexcept {
         logToHost(CLAP_LOG_INFO, message);
 }
 
+void Plugin::requestCallback() noexcept {
+    _contract.noteCallbackRequested();
+    if (_host && _host->request_callback)
+        _host->request_callback(_host);
+}
+
+// Captures everything the audio-thread contract checks compare against while
+// the plugin is active: frame bounds, the declared port layout (P05) and the
+// valid param ids (P08). Runs on the main thread inside activate, before any
+// process() can happen — audio-thread reads are race-free.
+void Plugin::captureActivateSnapshot(uint32_t minFrames, uint32_t maxFrames) noexcept {
+    _contract.setFrameBounds(minFrames, maxFrames);
+
+    std::vector<uint32_t> inputChannels;
+    std::vector<uint32_t> outputChannels;
+    if (auto* ports = extensionProvider<ext::AudioPortsProvider>(CLAP_EXT_AUDIO_PORTS)) {
+        for (int direction = 0; direction < 2; ++direction) {
+            const bool isInput = direction == 0;
+            auto& channels = isInput ? inputChannels : outputChannels;
+            const uint32_t count = ports->audioPortCount(isInput);
+            for (uint32_t i = 0; i < count; ++i) {
+                clap_audio_port_info info{};
+                channels.push_back(ports->audioPortInfo(i, isInput, &info) ? info.channel_count
+                                                                           : 0);
+            }
+        }
+    }
+    _contract.setPortLayout(std::move(inputChannels), std::move(outputChannels));
+
+    std::vector<clap_id> paramIds;
+    if (auto* params = extensionProvider<ext::ParamsProvider>(CLAP_EXT_PARAMS)) {
+        const uint32_t count = params->paramCount();
+        for (uint32_t i = 0; i < count; ++i) {
+            clap_param_info info{};
+            if (params->paramInfo(i, &info))
+                paramIds.push_back(info.id);
+        }
+    }
+    _contract.setParamIds(std::move(paramIds));
+}
+
 bool Plugin::sInit(const clap_plugin* p) {
     auto* self = from(p);
-    self->_threads.onInit(self->_host, &self->_logBuffer);
+    CVP_ASSERT_MAIN_THREAD(self);
+    if (self->_contract.isInitialized()) {
+        self->_contract.report(Violation::L02, "init()", "called twice on the same instance");
+        return true; // already initialized — don't run init logic again
+    }
+    self->_threads.onInit(self->_host, &self->_logBuffer, &self->_contract);
     if (self->_host)
         self->_hostLog =
             static_cast<const clap_host_log*>(self->_host->get_extension(self->_host, CLAP_EXT_LOG));
+    self->_contract.onHostLog(self->_hostLog);
+    earlylog::copyInto(self->_logBuffer);
+    // Set before the virtual: get_extension() is legal from within init().
+    self->_contract.setInitialized();
     self->logHostInfo();
     self->logLifecycle("lifecycle: init()");
     return self->init();
@@ -66,9 +159,10 @@ bool Plugin::sInit(const clap_plugin* p) {
 void Plugin::sDestroy(const clap_plugin* p) {
     auto* self = from(p);
     CVP_ASSERT_MAIN_THREAD(self);
-    if (self->_active)
-        self->logToHost(CLAP_LOG_HOST_MISBEHAVING,
-                        "destroy() called while the plugin is still active");
+    if (self->_contract.isActive())
+        self->_contract.report(Violation::L06, "destroy()",
+                               "called while the plugin is still active");
+    self->_contract.logSummary();
     self->logLifecycle("lifecycle: destroy()");
     delete self;
 }
@@ -77,9 +171,17 @@ bool Plugin::sActivate(const clap_plugin* p, double sampleRate, uint32_t minFram
                        uint32_t maxFrames) {
     auto* self = from(p);
     CVP_ASSERT_MAIN_THREAD(self);
-    if (self->_active) {
-        self->logToHost(CLAP_LOG_HOST_MISBEHAVING, "activate() called while already active");
+    if (self->_contract.isActive()) {
+        self->_contract.report(Violation::L03, "activate()", "called while already active");
         return false;
+    }
+    if (minFrames < 1 || maxFrames < minFrames) {
+        char detail[96];
+        std::snprintf(detail, sizeof(detail), "invalid frame bounds (min=%u, max=%u)", minFrames,
+                      maxFrames);
+        self->_contract.report(Violation::L13, "activate()", detail);
+        minFrames = std::max<uint32_t>(minFrames, 1);
+        maxFrames = std::max(maxFrames, minFrames);
     }
     if (self->_logLifecycle) {
         char buf[128];
@@ -88,64 +190,184 @@ bool Plugin::sActivate(const clap_plugin* p, double sampleRate, uint32_t minFram
         self->logToHost(CLAP_LOG_INFO, buf);
     }
     self->_sampleRate = sampleRate;
-    self->_active = self->activate(sampleRate, minFrames, maxFrames);
+    self->_contract.beginActivation();
+    const bool ok = self->activate(sampleRate, minFrames, maxFrames);
+    if (ok) {
+        self->captureActivateSnapshot(minFrames, maxFrames);
+        self->_contract.setActive(true);
+    }
+    self->_contract.endActivation();
     self->_firstProcessLogged = false;
-    return self->_active;
+    return ok;
 }
 
 void Plugin::sDeactivate(const clap_plugin* p) {
     auto* self = from(p);
     CVP_ASSERT_MAIN_THREAD(self);
-    if (!self->_active) {
-        self->logToHost(CLAP_LOG_HOST_MISBEHAVING, "deactivate() called while not active");
+    if (!self->_contract.isActive()) {
+        self->_contract.report(Violation::L04, "deactivate()", "called while not active");
         return;
+    }
+    if (self->_contract.isProcessing()) {
+        self->_contract.report(Violation::L05, "deactivate()",
+                               "called while still processing (missing stop_processing())");
+        self->stopProcessing();
+        self->_contract.setProcessing(false);
     }
     self->logLifecycle("lifecycle: deactivate()");
     self->deactivate();
-    self->_active = false;
+    self->_contract.setActive(false);
 }
 
 bool Plugin::sStartProcessing(const clap_plugin* p) {
     auto* self = from(p);
     CVP_ASSERT_AUDIO_THREAD(self);
-    if (!self->_active) {
-        self->logToHost(CLAP_LOG_HOST_MISBEHAVING, "start_processing() called while not active");
+    if (!self->_contract.isActive()) {
+        self->_contract.report(Violation::L07, "start_processing()", "called while not active");
         return false;
     }
-    if (self->_processing) {
-        self->logToHost(CLAP_LOG_HOST_MISBEHAVING, "start_processing() called while already processing");
+    if (self->_contract.isProcessing()) {
+        self->_contract.report(Violation::L07, "start_processing()",
+                               "called while already processing");
         return true;
     }
     self->logLifecycle("lifecycle: start_processing()");
-    self->_processing = self->startProcessing();
-    return self->_processing;
+    const bool ok = self->startProcessing();
+    self->_contract.setProcessing(ok);
+    self->_contract.invalidateSteadyTime();
+    return ok;
 }
 
 void Plugin::sStopProcessing(const clap_plugin* p) {
     auto* self = from(p);
     CVP_ASSERT_AUDIO_THREAD(self);
-    if (!self->_processing) {
-        self->logToHost(CLAP_LOG_HOST_MISBEHAVING, "stop_processing() called while not processing");
+    if (!self->_contract.isActive())
+        self->_contract.report(Violation::L08, "stop_processing()", "called while not active");
+    if (!self->_contract.isProcessing()) {
+        self->_contract.report(Violation::L08, "stop_processing()", "called while not processing");
         return;
     }
     self->logLifecycle("lifecycle: stop_processing()");
     self->stopProcessing();
-    self->_processing = false;
+    self->_contract.setProcessing(false);
 }
 
 void Plugin::sReset(const clap_plugin* p) {
     auto* self = from(p);
     CVP_ASSERT_AUDIO_THREAD(self);
+    if (!self->_contract.isActive())
+        self->_contract.report(Violation::L10, "reset()", "called while not active");
     self->logLifecycle("lifecycle: reset()");
+    // A reset may legally jump steady_time backwards (plugin.h): re-baseline.
+    self->_contract.invalidateSteadyTime();
     self->reset();
+}
+
+// Data contracts on the clap_process struct (P01..P08 minus the flush check).
+// All reports are throttled by the monitor, so a host that is persistently
+// wrong does not flood the log from the audio thread.
+void Plugin::checkProcessContracts(const clap_process* process) noexcept {
+    char detail[160];
+
+    if (process->frames_count < _contract.minFrames() ||
+        process->frames_count > _contract.maxFrames()) {
+        std::snprintf(detail, sizeof(detail), "frames_count=%u outside activate bounds [%u, %u]",
+                      process->frames_count, _contract.minFrames(), _contract.maxFrames());
+        _contract.report(Violation::P01, "process()", detail);
+    }
+
+    if (!_contract.checkSteadyTime(process->steady_time, process->frames_count)) {
+        std::snprintf(detail, sizeof(detail),
+                      "steady_time=%lld went backwards (must advance by at least frames_count)",
+                      static_cast<long long>(process->steady_time));
+        _contract.report(Violation::P02, "process()", detail);
+    }
+
+    const auto& inputChannels = _contract.inputChannels();
+    const auto& outputChannels = _contract.outputChannels();
+    if (process->audio_inputs_count != inputChannels.size() ||
+        process->audio_outputs_count != outputChannels.size()) {
+        std::snprintf(detail, sizeof(detail),
+                      "buffer counts in=%u/out=%u do not match declared ports in=%zu/out=%zu",
+                      process->audio_inputs_count, process->audio_outputs_count,
+                      inputChannels.size(), outputChannels.size());
+        _contract.report(Violation::P05, "process()", detail);
+    } else {
+        for (uint32_t i = 0; i < process->audio_inputs_count; ++i)
+            if (process->audio_inputs[i].channel_count != inputChannels[i]) {
+                std::snprintf(detail, sizeof(detail),
+                              "input port %u has channel_count=%u, declared %u", i,
+                              process->audio_inputs[i].channel_count, inputChannels[i]);
+                _contract.report(Violation::P05, "process()", detail);
+            }
+        for (uint32_t i = 0; i < process->audio_outputs_count; ++i)
+            if (process->audio_outputs[i].channel_count != outputChannels[i]) {
+                std::snprintf(detail, sizeof(detail),
+                              "output port %u has channel_count=%u, declared %u", i,
+                              process->audio_outputs[i].channel_count, outputChannels[i]);
+                _contract.report(Violation::P05, "process()", detail);
+            }
+    }
+
+    const clap_input_events* events = process->in_events;
+    if (!events || !events->size || !events->get)
+        return;
+    const uint32_t count = events->size(events);
+    uint32_t previousTime = 0;
+    for (uint32_t i = 0; i < count; ++i) {
+        const clap_event_header* header = events->get(events, i);
+        if (!header)
+            continue;
+        if (header->size < sizeof(clap_event_header)) {
+            std::snprintf(detail, sizeof(detail), "event %u has header size %u (malformed)", i,
+                          header->size);
+            _contract.report(Violation::P06, "process()", detail);
+            continue;
+        }
+        if (header->time < previousTime) {
+            std::snprintf(detail, sizeof(detail),
+                          "event %u at time %u arrives after an event at time %u (unsorted)", i,
+                          header->time, previousTime);
+            _contract.report(Violation::P03, "process()", detail);
+        } else {
+            previousTime = header->time;
+        }
+        if (header->time >= process->frames_count) {
+            std::snprintf(detail, sizeof(detail),
+                          "event %u at time %u is beyond the block (frames_count=%u)", i,
+                          header->time, process->frames_count);
+            _contract.report(Violation::P04, "process()", detail);
+        }
+        if (header->space_id == CLAP_CORE_EVENT_SPACE_ID && _contract.hasParams()) {
+            clap_id paramId = CLAP_INVALID_ID;
+            if (header->type == CLAP_EVENT_PARAM_VALUE)
+                paramId = reinterpret_cast<const clap_event_param_value*>(header)->param_id;
+            else if (header->type == CLAP_EVENT_PARAM_MOD)
+                paramId = reinterpret_cast<const clap_event_param_mod*>(header)->param_id;
+            if (paramId != CLAP_INVALID_ID && !_contract.knownParamId(paramId)) {
+                std::snprintf(detail, sizeof(detail), "event %u targets unknown param_id=%u", i,
+                              paramId);
+                _contract.report(Violation::P08, "process()", detail);
+            }
+        }
+    }
 }
 
 clap_process_status Plugin::sProcess(const clap_plugin* p, const clap_process* process) {
     auto* self = from(p);
     CVP_ASSERT_AUDIO_THREAD(self);
-    if (!self->_active || !self->_processing) {
-        self->logToHost(CLAP_LOG_HOST_MISBEHAVING,
-                        "process() called while not active/processing");
+    if (!self->_contract.tryEnterProcess()) {
+        self->_contract.report(Violation::L12, "process()",
+                               "called concurrently with another process() call");
+        return CLAP_PROCESS_ERROR;
+    }
+    struct ProcessGuard {
+        ContractMonitor& monitor;
+        ~ProcessGuard() { monitor.leaveProcess(); }
+    } guard{self->_contract};
+
+    if (!self->_contract.isActive() || !self->_contract.isProcessing()) {
+        self->_contract.report(Violation::L09, "process()", "called while not active/processing");
         return CLAP_PROCESS_ERROR;
     }
     if (self->_logLifecycle && !self->_firstProcessLogged) {
@@ -155,17 +377,30 @@ clap_process_status Plugin::sProcess(const clap_plugin* p, const clap_process* p
                       process->frames_count);
         self->logToHost(CLAP_LOG_INFO, buf);
     }
+    self->checkProcessContracts(process);
     return self->process(process);
 }
 
 const void* Plugin::sGetExtension(const clap_plugin* p, const char* id) {
     // [thread-safe] per spec — no thread assertion here.
-    return from(p)->findVtable(id);
+    auto* self = from(p);
+    if (!self->_contract.isInitialized() && id &&
+        std::strcmp(id, CVP_EXT_VIOLATIONS) != 0) {
+        char detail[128];
+        std::snprintf(detail, sizeof(detail), "get_extension(\"%s\") called before init()", id);
+        self->_contract.report(Violation::L01, "get_extension()", detail);
+    }
+    if (id && std::strcmp(id, CVP_EXT_VIOLATIONS) == 0)
+        return &kViolationsVtable;
+    return self->findVtable(id);
 }
 
 void Plugin::sOnMainThread(const clap_plugin* p) {
     auto* self = from(p);
     CVP_ASSERT_MAIN_THREAD(self);
+    if (!self->_contract.consumePendingCallbacks())
+        self->_contract.report(Violation::L11, "on_main_thread()",
+                               "called without a pending request_callback()");
     self->logLifecycle("lifecycle: on_main_thread()");
     self->onMainThread();
 }

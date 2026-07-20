@@ -4,6 +4,7 @@
 
 #include <vector>
 
+#include "wrapper/contract.h"
 #include "wrapper/logbuffer.h"
 #include "wrapper/threadcheck.h"
 
@@ -29,6 +30,11 @@ public:
 
     const clap_host* host() const noexcept { return _host; }
     ThreadChecker& threadChecker() noexcept { return _threads; }
+
+    // Host-contract state machine + violation registry (single source for
+    // active/processing state; feeds the log, the GUI badge and the
+    // org.clap-validator.violations query extension).
+    ContractMonitor& contract() noexcept { return _contract; }
 
     // Every log line of this instance lands here (in addition to the host's
     // clap.log extension or stderr) — GUI log views render from this buffer.
@@ -64,9 +70,14 @@ protected:
     // inheritance pointer adjustment once, at construction).
     void provideExtension(const char* extensionId, const void* vtable, void* providerIface) noexcept;
 
-    bool isActive() const noexcept { return _active; }
-    bool isProcessing() const noexcept { return _processing; }
+    bool isActive() const noexcept { return _contract.isActive(); }
+    bool isProcessing() const noexcept { return _contract.isProcessing(); }
     double sampleRate() const noexcept { return _sampleRate; }
+
+    // Always use this instead of host()->request_callback(): it keeps the
+    // pending-callback count that lets on_main_thread() detect spurious
+    // callbacks (L11).
+    void requestCallback() noexcept;
 
     // Appends to the instance LogBuffer, then forwards to the host's
     // clap.log extension if present, stderr otherwise.
@@ -100,6 +111,8 @@ private:
 
     void logLifecycle(const char* message) noexcept;
     void logHostInfo() noexcept; // hostinfo.cpp — runs for every plugin at init()
+    void captureActivateSnapshot(uint32_t minFrames, uint32_t maxFrames) noexcept;
+    void checkProcessContracts(const clap_process* process) noexcept;
 
     clap_plugin _plugin{};
     const clap_host* _host = nullptr;
@@ -107,8 +120,7 @@ private:
     std::vector<ExtRecord> _extensions;
     LogBuffer _logBuffer;
     ThreadChecker _threads;
-    bool _active = false;
-    bool _processing = false;
+    ContractMonitor _contract;
     bool _logLifecycle = false;
     bool _firstProcessLogged = false;
     double _sampleRate = 0.0;
