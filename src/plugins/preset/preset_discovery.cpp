@@ -1,13 +1,25 @@
 #include "plugins/preset/preset_discovery.h"
 
+#include <cstdio>
 #include <cstring>
 #include <string>
 
 #include "plugins/preset/preset_shared.h"
+#include "wrapper/earlylog.h"
 
 namespace cvp {
 
 namespace {
+
+// PD01: the indexer must not call back into the provider before init() has
+// run, nor re-enter it from within a declare_*() call (preset-discovery.h).
+// There is no plugin instance here, so findings go to the EarlyLog (stderr +
+// every later plugin instance's log).
+void reportProviderMisuse(const char* function, const char* detail) {
+    char line[224];
+    std::snprintf(line, sizeof(line), "seq [PD01] %s: %s", function, detail);
+    earlylog::append(CLAP_LOG_HOST_MISBEHAVING, line);
+}
 
 const clap_preset_discovery_provider_descriptor kProviderDescriptor = {
     .clap_version = CLAP_VERSION_INIT,
@@ -20,6 +32,8 @@ struct Provider {
     clap_preset_discovery_provider provider;
     const clap_preset_discovery_indexer* indexer;
     std::string fileLocation; // keeps the declared location string alive
+    bool initialized = false; // set once init() completed
+    bool inDeclare = false;   // set around declare_*() calls into the indexer
 };
 
 Provider* self(const clap_preset_discovery_provider* provider) {
@@ -28,6 +42,10 @@ Provider* self(const clap_preset_discovery_provider* provider) {
 
 bool providerInit(const clap_preset_discovery_provider* provider) {
     auto* p = self(provider);
+    if (p->initialized) {
+        reportProviderMisuse("provider.init()", "called twice on the same provider");
+        return true;
+    }
 
     // Make sure hosts have real files to crawl (idempotent, never overwrites).
     const bool fileLocationUsable = preset::ensureSamplePresetFiles();
@@ -38,7 +56,10 @@ bool providerInit(const clap_preset_discovery_provider* provider) {
         .description = "clap-validator-plugin preset file",
         .file_extension = preset::kFileExtension,
     };
-    if (!p->indexer->declare_filetype(p->indexer, &filetype))
+    p->inDeclare = true;
+    const bool filetypeAccepted = p->indexer->declare_filetype(p->indexer, &filetype);
+    p->inDeclare = false;
+    if (!filetypeAccepted)
         return false;
 
     // clap-validator <= 0.3.2 cannot handle ANY Windows FILE location: its
@@ -63,7 +84,9 @@ bool providerInit(const clap_preset_discovery_provider* provider) {
             .kind = CLAP_PRESET_DISCOVERY_LOCATION_FILE,
             .location = p->fileLocation.c_str(),
         };
+        p->inDeclare = true;
         p->indexer->declare_location(p->indexer, &fileLocation);
+        p->inDeclare = false;
     }
 
     const clap_preset_discovery_location pluginLocation = {
@@ -72,16 +95,27 @@ bool providerInit(const clap_preset_discovery_provider* provider) {
         .kind = CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN,
         .location = nullptr, // must be null for the PLUGIN kind
     };
-    return p->indexer->declare_location(p->indexer, &pluginLocation);
+    p->inDeclare = true;
+    const bool accepted = p->indexer->declare_location(p->indexer, &pluginLocation);
+    p->inDeclare = false;
+    p->initialized = accepted;
+    return accepted;
 }
 
 void providerDestroy(const clap_preset_discovery_provider* provider) {
     delete self(provider);
 }
 
-bool providerGetMetadata(const clap_preset_discovery_provider*, uint32_t locationKind,
+bool providerGetMetadata(const clap_preset_discovery_provider* provider, uint32_t locationKind,
                          const char* location,
                          const clap_preset_discovery_metadata_receiver* receiver) {
+    auto* p = self(provider);
+    if (!p->initialized)
+        reportProviderMisuse("provider.get_metadata()", "called before provider init()");
+    else if (p->inDeclare)
+        reportProviderMisuse("provider.get_metadata()",
+                             "re-entered from within a declare_*() call");
+
     const clap_universal_plugin_id pluginId = {.abi = "clap", .id = preset::kPresetPluginId};
 
     if (locationKind == CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN) {
@@ -120,7 +154,9 @@ bool providerGetMetadata(const clap_preset_discovery_provider*, uint32_t locatio
     return false;
 }
 
-const void* providerGetExtension(const clap_preset_discovery_provider*, const char*) {
+const void* providerGetExtension(const clap_preset_discovery_provider* provider, const char*) {
+    if (!self(provider)->initialized)
+        reportProviderMisuse("provider.get_extension()", "called before provider init()");
     return nullptr;
 }
 
