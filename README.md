@@ -16,12 +16,43 @@ The suite is also an *active* diagnostic instrument:
 - Every plugin logs the **host's identity** (name, vendor, version, URL, CLAP version) and
   probes **22 host-side extensions** at `init()`, logging which are present and which are not —
   a one-glance host fingerprint.
-- In debug builds the plugins detect host misbehavior — thread-contract violations, illegal
-  lifecycle transitions, floating-only GUI calls on embedded editors, configuration changes
-  while active — and report it through the host's `clap.log` extension with
-  `CLAP_LOG_HOST_MISBEHAVING`.
+- Every plugin monitors the host against the **calling-sequence contracts** of the CLAP spec —
+  see [Host contract checking](#host-contract-checking) below.
 - All log output of an instance flows through a per-instance `LogBuffer` (in addition to
   `clap.log`/stderr), which the GUI flavor renders live in its log pane.
+
+## Host contract checking
+
+Each plugin instance runs a `ContractMonitor` that checks the host against ~40 documented
+calling-sequence rules from the CLAP 1.2.10 headers, always on (release builds included):
+
+- **lifecycle order** — double `activate()`, `process()` outside `start/stop_processing`,
+  `destroy()` while active, spurious `on_main_thread()`, concurrent `process()` calls, …
+- **process-time data** — `frames_count` vs the activate bounds, `steady_time` monotonicity,
+  unsorted/malformed/out-of-block events, buffer counts vs the declared port layout, unknown
+  param ids, `params.flush()` overlapping `process()`;
+- **per-extension rules** — GUI call order and embedded/floating misuse, port scans or
+  config switches while active, latency/voice-info queries in illegal states, and more;
+- **DSO entry rules** — factory access before `entry.init()`, unbalanced or concurrent
+  init/deinit (carried by a process-global early log into every instance's log pane);
+- **thread contracts** — via the host's `clap.thread-check` when available (authoritative,
+  debug-assert), init-thread heuristics otherwise (log-only).
+
+Every finding is logged with a **stable code** (`seq [L03] activate(): called while already
+active`) at `CLAP_LOG_HOST_MISBEHAVING`, throttled per code so audio-path detectors can't
+flood the log. Violating calls are refused only where the spec makes rejection safe;
+everything else is tolerated so the session keeps running. Detections surface four ways:
+
+1. the **log** (GUI pane, host `clap.log`, stderr);
+2. the GUI flavor's live **badge** — green `contract: OK` / red `contract: N violations [last L03]`;
+3. a **destroy-time summary**: `contract summary: 3 violations (L03×1, P02×2)`;
+4. a machine-readable **query extension** `org.clap-validator.violations/1`
+   ([include/cvp/violations.h](include/cvp/violations.h)) exposing per-code counters and the
+   last message per code to test harnesses — served by every flavor.
+
+The full catalog — each code, the spec rule behind it, how it is detected, the response
+policy, and the list of contracts that are provably *undetectable* from inside a plugin —
+lives in [docs/host-contract-violations.md](docs/host-contract-violations.md).
 
 ## The plugin matrix
 
@@ -98,7 +129,8 @@ Xlib on Linux. Each platform view shows:
   protocol usage;
 - a **Copy Log** button between the two sections that copies the complete log to the system
   clipboard (NSPasteboard / `CF_UNICODETEXT` / X11 `CLIPBOARD` selection with
-  TARGETS/UTF8_STRING service).
+  TARGETS/UTF8_STRING service), next to the live **contract badge** (green `contract: OK`,
+  red `contract: N violations [last CODE]`) fed by the host-contract monitor.
 
 Embedded windows only (per spec recommendation); floating-window requests are rejected and
 logged. Platform status: **macOS build- and runtime-verified** (embedded in a test host,
