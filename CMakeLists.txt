@@ -55,6 +55,7 @@ add_library(clap-validator-plugins MODULE
     src/plugins/multiout_fx/multiout_fx.cpp
     src/plugins/multiout_gen/multiout_gen.cpp
     src/plugins/notefx/notefx.cpp
+    src/plugins/params_zoo/params_zoo.cpp
     src/plugins/preset/preset_discovery.cpp
     src/plugins/preset/preset_plugin.cpp
     src/plugins/preset/preset_shared.cpp

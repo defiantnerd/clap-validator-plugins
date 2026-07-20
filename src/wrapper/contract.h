@@ -21,7 +21,8 @@ class LogBuffer;
 // counter here.
 #define CVP_VIOLATION_CODES(X)                                                                     \
     X(L01) X(L02) X(L03) X(L04) X(L05) X(L06) X(L07) X(L08) X(L09) X(L10) X(L11) X(L12) X(L13)     \
-    X(P01) X(P02) X(P03) X(P04) X(P05) X(P06) X(P07) X(P08) X(P09) X(P10)                          \
+    X(P01) X(P02) X(P03) X(P04) X(P05) X(P06) X(P07) X(P08) X(P09) X(P10) X(P11) X(P12) X(P13)     \
+    X(P14)                                                                                         \
     X(T01) X(T02) X(T03) X(T04)                                                                    \
     X(G01) X(G02) X(G03) X(G04)                                                                    \
     X(AP01) X(NP01) X(AC01) X(CA01) X(LT01) X(VI01) X(R01) X(PL01) X(SR01)
@@ -106,15 +107,20 @@ public:
     const std::vector<PortInfo>& inputPorts() const noexcept { return _inputPorts; }
     const std::vector<PortInfo>& outputPorts() const noexcept { return _outputPorts; }
 
-    // Valid param ids, captured at activate for the P08 event check (same
-    // stability argument as the port layout).
-    void setParamIds(std::vector<clap_id> ids) noexcept { _paramIds = std::move(ids); }
-    bool hasParams() const noexcept { return !_paramIds.empty(); }
-    bool knownParamId(clap_id id) const noexcept {
-        for (clap_id known : _paramIds)
-            if (known == id)
-                return true;
-        return false;
+    // Param table (id, declared flags, cookie), captured at activate for the
+    // event checks P08/P11..P14 (same stability argument as the port layout).
+    struct ParamRecord {
+        clap_id id;
+        uint32_t flags;
+        void* cookie;
+    };
+    void setParams(std::vector<ParamRecord> params) noexcept { _params = std::move(params); }
+    bool hasParams() const noexcept { return !_params.empty(); }
+    const ParamRecord* findParam(clap_id id) const noexcept {
+        for (const auto& param : _params)
+            if (param.id == id)
+                return &param;
+        return nullptr;
     }
 
     // --- steady_time monotonicity (P02); audio-thread only ---
@@ -186,7 +192,7 @@ private:
     uint32_t _maxFrames = 0;
     std::vector<PortInfo> _inputPorts;
     std::vector<PortInfo> _outputPorts;
-    std::vector<clap_id> _paramIds;
+    std::vector<ParamRecord> _params;
 
     bool _steadyValid = false; // audio-thread only
     int64_t _steadyEnd = 0;    // audio-thread only

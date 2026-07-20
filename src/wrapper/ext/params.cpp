@@ -52,6 +52,9 @@ void sFlush(const clap_plugin* p, const clap_input_events* in, const clap_output
         contract.report(Violation::T03, "params.flush()",
                         "must be on the main thread while the plugin is inactive");
     }
+    // P08/P11..P13 on flushed events too (no transport here, so the P14
+    // automation heuristic never fires for flush deliveries).
+    plugin->checkParamEvents(in, nullptr);
     provider(p)->paramsFlush(in, out);
 }
 

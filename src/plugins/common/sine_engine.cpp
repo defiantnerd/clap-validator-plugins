@@ -1,5 +1,6 @@
 #include "plugins/common/sine_engine.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -24,6 +25,22 @@ void SineEngine::reset() noexcept {
     for (auto& voice : _voices)
         voice = Voice{};
     _clock = 0;
+    _globalMod = 0.0f;
+}
+
+void SineEngine::modulate(int16_t key, int16_t channel, int32_t noteId, double amount) noexcept {
+    if (key < 0 && channel < 0 && noteId < 0) {
+        _globalMod = static_cast<float>(amount);
+        return;
+    }
+    for (auto& voice : _voices) {
+        if (!voice.active)
+            continue;
+        if ((key >= 0 && voice.key != key) || (channel >= 0 && voice.channel != channel) ||
+            (noteId >= 0 && voice.noteId != noteId))
+            continue;
+        voice.modGain = static_cast<float>(amount);
+    }
 }
 
 void SineEngine::noteOn(int16_t key, int16_t channel, int32_t noteId, double velocity) noexcept {
@@ -109,8 +126,12 @@ void SineEngine::renderImpl(Sample* left, Sample* right, uint32_t offset, uint32
     for (auto& voice : _voices) {
         if (!voice.active)
             continue;
+        // Effective per-voice level: base volume plus the global and
+        // per-voice modulation offsets, clamped to the param range.
+        const float level =
+            std::clamp(gain + _globalMod + voice.modGain, 0.0f, 1.0f);
         for (uint32_t i = offset; i < offset + frames; ++i) {
-            float envelope = voice.velocity * gain;
+            float envelope = voice.velocity * level;
             if (voice.releasing) {
                 voice.releaseGain -= voice.releaseStep;
                 if (voice.releaseGain <= 0.0f) {

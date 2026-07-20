@@ -36,6 +36,13 @@ public:
     // org.clap-validator.violations query extension).
     ContractMonitor& contract() noexcept { return _contract; }
 
+    // Param-event contract checks (P08, P11..P14) against the param table
+    // cached at activate. Runs in the process() pre-pass; the params wrapper
+    // runs it for flush() deliveries too (with no transport, so the
+    // automation heuristic P14 stays quiet there).
+    void checkParamEvents(const clap_input_events* events,
+                          const clap_event_transport* transport) noexcept;
+
     // Every log line of this instance lands here (in addition to the host's
     // clap.log extension or stderr) — GUI log views render from this buffer.
     LogBuffer& logBuffer() noexcept { return _logBuffer; }

@@ -19,6 +19,12 @@ public:
     // Handles CLAP note on/off/choke and MIDI 0x8x/0x9x events; ignores others.
     void handleEvent(const clap_event_header* header) noexcept;
 
+    // Polyphonic modulation: applies an additive gain offset to the voices
+    // matching key/channel/noteId (-1 = wildcard per component, matching the
+    // note-address rules). All-wildcards targets the engine-global offset.
+    // New voices start unmodulated.
+    void modulate(int16_t key, int16_t channel, int32_t noteId, double amount) noexcept;
+
     // Adds the active voices into left/right at [offset, offset+frames), scaled
     // by gain. Both CLAP sample sizes are supported; the oscillator runs in
     // double either way, only the output write differs.
@@ -46,6 +52,7 @@ private:
         float velocity = 0.0f;
         float releaseGain = 1.0f;
         float releaseStep = 0.0f;
+        float modGain = 0.0f; // per-voice modulation offset (poly modulation)
     };
 
     void noteOn(int16_t key, int16_t channel, int32_t noteId, double velocity) noexcept;
@@ -57,6 +64,7 @@ private:
     Voice _voices[kMaxVoices];
     double _sampleRate = 48000.0;
     uint32_t _clock = 0;
+    float _globalMod = 0.0f; // all-wildcard modulation offset
 };
 
 } // namespace cvp

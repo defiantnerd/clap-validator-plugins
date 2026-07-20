@@ -111,7 +111,14 @@ bool SynthPlugin::paramInfo(uint32_t index, clap_param_info* info) noexcept {
     std::memset(info, 0, sizeof(*info));
     info->id = kParamVolume;
     std::snprintf(info->name, sizeof(info->name), "Volume");
-    info->flags = CLAP_PARAM_IS_AUTOMATABLE;
+    // Polyphonically modulatable: PARAM_MOD events with key/channel/note_id
+    // target single voices, fully-wildcarded ones the whole instrument.
+    // (Per-port variants are pointless with a single note port; per-note
+    // *automation* is deliberately left out — poly modulation is the path
+    // hosts actually exercise.)
+    info->flags = CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_MODULATABLE |
+                  CLAP_PARAM_IS_MODULATABLE_PER_NOTE_ID | CLAP_PARAM_IS_MODULATABLE_PER_KEY |
+                  CLAP_PARAM_IS_MODULATABLE_PER_CHANNEL;
     info->min_value = 0.0;
     info->max_value = 1.0;
     info->default_value = 0.7;
@@ -149,6 +156,15 @@ void SynthPlugin::handleEvent(const clap_event_header* header) noexcept {
         const auto* event = reinterpret_cast<const clap_event_param_value*>(header);
         if (event->param_id == kParamVolume)
             _volume.store(event->value, std::memory_order_relaxed);
+        return;
+    }
+    if (header->space_id == CLAP_CORE_EVENT_SPACE_ID && header->type == CLAP_EVENT_PARAM_MOD) {
+        // Polyphonic modulation: -1 in key/channel/note_id acts as wildcard,
+        // so a fully-wildcarded event modulates the whole instrument while a
+        // targeted one modulates single voices.
+        const auto* event = reinterpret_cast<const clap_event_param_mod*>(header);
+        if (event->param_id == kParamVolume)
+            _engine.modulate(event->key, event->channel, event->note_id, event->amount);
         return;
     }
     _engine.handleEvent(header);

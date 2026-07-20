@@ -126,16 +126,16 @@ void Plugin::captureActivateSnapshot(uint32_t minFrames, uint32_t maxFrames) noe
     }
     _contract.setPortLayout(std::move(inputPorts), std::move(outputPorts));
 
-    std::vector<clap_id> paramIds;
+    std::vector<ContractMonitor::ParamRecord> paramTable;
     if (auto* params = extensionProvider<ext::ParamsProvider>(CLAP_EXT_PARAMS)) {
         const uint32_t count = params->paramCount();
         for (uint32_t i = 0; i < count; ++i) {
             clap_param_info info{};
             if (params->paramInfo(i, &info))
-                paramIds.push_back(info.id);
+                paramTable.push_back({info.id, info.flags, info.cookie});
         }
     }
-    _contract.setParamIds(std::move(paramIds));
+    _contract.setParams(std::move(paramTable));
 }
 
 bool Plugin::sInit(const clap_plugin* p) {
@@ -379,20 +379,98 @@ bool Plugin::checkProcessContracts(const clap_process* process) noexcept {
                           header->time, process->frames_count);
             _contract.report(Violation::P04, "process()", detail);
         }
-        if (header->space_id == CLAP_CORE_EVENT_SPACE_ID && _contract.hasParams()) {
-            clap_id paramId = CLAP_INVALID_ID;
-            if (header->type == CLAP_EVENT_PARAM_VALUE)
-                paramId = reinterpret_cast<const clap_event_param_value*>(header)->param_id;
-            else if (header->type == CLAP_EVENT_PARAM_MOD)
-                paramId = reinterpret_cast<const clap_event_param_mod*>(header)->param_id;
-            if (paramId != CLAP_INVALID_ID && !_contract.knownParamId(paramId)) {
-                std::snprintf(detail, sizeof(detail), "event %u targets unknown param_id=%u", i,
+    }
+    checkParamEvents(events, process->transport);
+    return processable;
+}
+
+// Param-event contracts (P08, P11..P14), shared by the process() pre-pass and
+// the flush() wrapper. P14 (automation of a non-automatable param) only fires
+// for events delivered while the transport is playing: the spec explicitly
+// allows live user changes regardless of CLAP_PARAM_IS_AUTOMATABLE, and a
+// playing transport is the one context that identifies automation playback.
+void Plugin::checkParamEvents(const clap_input_events* events,
+                              const clap_event_transport* transport) noexcept {
+    if (!events || !events->size || !events->get || !_contract.hasParams())
+        return;
+    const bool playing = transport && (transport->flags & CLAP_TRANSPORT_IS_PLAYING) != 0;
+    char detail[160];
+    const uint32_t count = events->size(events);
+    for (uint32_t i = 0; i < count; ++i) {
+        const clap_event_header* header = events->get(events, i);
+        if (!header || header->space_id != CLAP_CORE_EVENT_SPACE_ID ||
+            header->size < sizeof(clap_event_header))
+            continue; // malformed headers are P06, reported by the caller
+        const bool isValue = header->type == CLAP_EVENT_PARAM_VALUE;
+        const bool isMod = header->type == CLAP_EVENT_PARAM_MOD;
+        if (!isValue && !isMod)
+            continue;
+
+        clap_id paramId;
+        void* cookie;
+        int32_t noteId;
+        int16_t key, channel;
+        if (isValue) {
+            const auto* event = reinterpret_cast<const clap_event_param_value*>(header);
+            paramId = event->param_id;
+            cookie = event->cookie;
+            noteId = event->note_id;
+            key = event->key;
+            channel = event->channel;
+        } else {
+            const auto* event = reinterpret_cast<const clap_event_param_mod*>(header);
+            paramId = event->param_id;
+            cookie = event->cookie;
+            noteId = event->note_id;
+            key = event->key;
+            channel = event->channel;
+        }
+        const auto* param = _contract.findParam(paramId);
+        if (!param) {
+            std::snprintf(detail, sizeof(detail), "event %u targets unknown param_id=%u", i,
+                          paramId);
+            _contract.report(Violation::P08, "process()/flush()", detail);
+            continue;
+        }
+        // The host must pass back exactly the cookie from param_info, or null.
+        if (cookie && cookie != param->cookie) {
+            std::snprintf(detail, sizeof(detail),
+                          "event %u for param_id=%u carries a wrong cookie", i, paramId);
+            _contract.report(Violation::P11, "process()/flush()", detail);
+        }
+        if (isValue && (param->flags & CLAP_PARAM_IS_READONLY)) {
+            std::snprintf(detail, sizeof(detail),
+                          "event %u writes read-only param_id=%u", i, paramId);
+            _contract.report(Violation::P12, "process()/flush()", detail);
+            continue;
+        }
+        if (isMod) {
+            if (!(param->flags & CLAP_PARAM_IS_MODULATABLE)) {
+                std::snprintf(detail, sizeof(detail),
+                              "event %u modulates param_id=%u, which is not modulatable", i,
                               paramId);
-                _contract.report(Violation::P08, "process()", detail);
+                _contract.report(Violation::P13, "process()/flush()", detail);
+            } else if ((noteId >= 0 &&
+                        !(param->flags & CLAP_PARAM_IS_MODULATABLE_PER_NOTE_ID)) ||
+                       (key >= 0 && !(param->flags & CLAP_PARAM_IS_MODULATABLE_PER_KEY)) ||
+                       (channel >= 0 &&
+                        !(param->flags & CLAP_PARAM_IS_MODULATABLE_PER_CHANNEL))) {
+                std::snprintf(detail, sizeof(detail),
+                              "event %u modulates param_id=%u per note/key/channel without the "
+                              "matching per-* capability",
+                              i, paramId);
+                _contract.report(Violation::P13, "process()/flush()", detail);
             }
+            continue;
+        }
+        if (playing && !(param->flags & CLAP_PARAM_IS_AUTOMATABLE)) {
+            std::snprintf(detail, sizeof(detail),
+                          "event %u automates non-automatable param_id=%u (delivered while the "
+                          "transport is playing)",
+                          i, paramId);
+            _contract.report(Violation::P14, "process()", detail);
         }
     }
-    return processable;
 }
 
 clap_process_status Plugin::sProcess(const clap_plugin* p, const clap_process* process) {

@@ -73,6 +73,10 @@ processing (`start_processing`), walked back by `stop_processing` /
 | P08 | `CLAP_EVENT_PARAM_VALUE`/`PARAM_MOD` targeting an unknown `param_id` | params.h event routing | Tolerate — event ignored |
 | P09 | a port got a 64-bit buffer without having declared `CLAP_AUDIO_PORT_SUPPORTS_64BITS`, or has neither `data32` nor `data64` | audio-buffer.h: "Either data32 or data64 pointer will be set"; audio-ports.h: 64-bit is opt-in per port | Reject (`CLAP_PROCESS_ERROR`) when the port has no buffer the plugin could legally use; Tolerate when a usable 32-bit buffer accompanies it |
 | P10 | mixed 32/64-bit buffers although a port declared `CLAP_AUDIO_PORT_REQUIRES_COMMON_SAMPLE_SIZE` | audio-ports.h: "64 bits audio or 32 bits audio, but it can't be mixed" | Tolerate — the effect processes with conversion |
+| P11 | a param event carries a non-null cookie that differs from the one in `clap_param_info` | params.h: the host passes the provided cookie back, or null | Tolerate — the id lookup path is used |
+| P12 | `PARAM_VALUE` targets a `CLAP_PARAM_IS_READONLY` parameter | params.h: "The parameter can't be changed by the host" | Tolerate — the write is ignored |
+| P13 | `PARAM_MOD` targets a parameter without `CLAP_PARAM_IS_MODULATABLE`, or uses note/key/channel addressing without the matching `MODULATABLE_PER_*` capability | params.h modulation flags | Tolerate — the modulation is ignored |
+| P14 | `PARAM_VALUE` automates a parameter without `CLAP_PARAM_IS_AUTOMATABLE`, delivered in `process()` **while the transport is playing** | params.h: only recording/playback of automation needs the flag — "The host can send live user changes for this parameter regardless of this flag", so flush deliveries and stopped-transport blocks are never flagged | Tolerate — the value is applied like a live change |
 
 ## T — Thread contracts (`thread-check.h` + per-function annotations)
 

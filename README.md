@@ -5,7 +5,7 @@
 A suite of [CLAP](https://github.com/free-audio/clap) plugins designed to test **hosts** —
 the inverse of [clap-validator](https://github.com/free-audio/clap-validator), which tests plugins.
 
-All twelve plugins ship in a single `clap-validator-plugins.clap` binary whose entry point
+All thirteen plugins ship in a single `clap-validator-plugins.clap` binary whose entry point
 exposes **two factories**: the plugin factory and a preset-discovery factory — multi-plugin
 binaries and multi-factory entries are both things hosts must handle. Each plugin deliberately
 exposes a different extension profile, forcing hosts to correctly handle heterogeneous plugin
@@ -61,13 +61,14 @@ lives in [docs/host-contract-violations.md](docs/host-contract-violations.md).
 |---|---|---|---|---|
 | Validator Effect | `effect` | audio-ports (stereo in/out, **32+64-bit, common sample size required**), params, state, latency, tail, render, remote-controls | **note-ports** | gain |
 | Validator NoteFX | `notefx` | note-ports (1 in / 1 out), params, state | **audio-ports — the extension is not implemented at all** | note transpose |
-| Validator Synth | `synth` | note-ports (1 in), audio-ports (1 stereo out, **supports + prefers 64-bit**), params, state, voice-info | latency, tail | 8-voice sine |
+| Validator Synth | `synth` | note-ports (1 in), audio-ports (1 stereo out, **supports + prefers 64-bit**), params (Volume **polyphonically modulatable** per note/key/channel), state, voice-info | latency, tail | 8-voice sine |
 | Validator Sidechain Synth | `sidechain-synth` | note-ports (1 in), audio-ports (**non-main** stereo in "Sidechain" + main stereo out), params, state, remote-controls | latency, tail, voice-info | sine gated by sidechain level |
 | Validator MultiOut Gen | `multiout-gen` | audio-ports, audio-ports-config ("Stereo": 1 out; "Multi Out": main + 4 aux), params, state | note-ports | distinct sine pitch per port |
 | Validator MultiOut FX | `multiout-fx` | audio-ports (1 stereo in), audio-ports-config ("Stereo": 1 out; "Multi Out": main + 2 aux), params, state | note-ports | input fan-out |
 | Validator AudioPortsZero | `audioports-zero` | **audio-ports with 0 ports** in both directions, params, state | note-ports | none (sleeps) |
 | Validator Slow | `slow` | audio-ports (stereo in/out), params, state, latency | note-ports | passthrough |
 | Validator HostCheck | `hostcheck` | audio-ports (stereo in/out) **only** | **params, state** — first flavor with neither | passthrough |
+| Validator Params | `params` | audio-ports (stereo in/out), **params (all flag types)**, state, remote-controls | note-ports, latency, tail, render | gain/drive/rotation + input meter |
 | Validator GUI | `gui` | audio-ports (stereo in/out), params, state, **gui**, remote-controls (**2 pages**) | note-ports | gain |
 | Validator Preset | `preset` | audio-ports (stereo in/out), params (Gain, Color), state, **preset-load**, remote-controls | note-ports | gain |
 | Validator Surround | `surround` | audio-ports (surround-typed main in/out), **surround**, **configurable-audio-ports** (Quad 4.0 / 5.1 / 7.1), params (Gain, Solo Channel), state, remote-controls | note-ports, **mono/stereo entirely** | passthrough with channel solo |
@@ -84,6 +85,15 @@ Host-testing traps baked in:
 - **MultiOut Gen/FX**: port ids stay stable across configs (the main out keeps id 0 in both);
   each Gen output port emits a distinct pitch (A3, C#4, E4, G4, A4), so routing is verifiable
   by ear or meter. `select()` correctly fails while the plugin is active.
+- **Params (parameter-type zoo)**: one parameter per flag constellation — automatable+
+  modulatable Gain with the suite's only **non-null cookie** (a wrong cookie back from the
+  host is flagged as P11), non-automatable Drive (live changes legal, automation while the
+  transport plays is flagged as P14), the **read-only** "In Peak" input meter (host writes
+  flagged as P12 and ignored), a **bypass**, the **periodic** Rotation (0–360° stereo
+  rotation), a **requires-process** DC Offset (the params.h example), a stepped **enum**
+  Curve, and a **hidden** Secret Trim. Illegal `PARAM_MOD`s are flagged as P13. The synth's
+  Volume is **polyphonically modulatable**: note/key/channel-addressed `PARAM_MOD` events
+  modulate single voices, audibly.
 - **Sample sizes (32/64-bit)**: deliberately heterogeneous. The Effect supports both formats
   but declares `REQUIRES_COMMON_SAMPLE_SIZE` (mixing in/out formats is flagged as P10, yet
   tolerated with conversion); the Synth **supports and prefers** 64-bit; the Sidechain Synth
