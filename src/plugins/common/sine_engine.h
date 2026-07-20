@@ -19,8 +19,12 @@ public:
     // Handles CLAP note on/off/choke and MIDI 0x8x/0x9x events; ignores others.
     void handleEvent(const clap_event_header* header) noexcept;
 
-    // Adds the active voices into left/right at [offset, offset+frames), scaled by gain.
+    // Adds the active voices into left/right at [offset, offset+frames), scaled
+    // by gain. Both CLAP sample sizes are supported; the oscillator runs in
+    // double either way, only the output write differs.
     void render(float* left, float* right, uint32_t offset, uint32_t frames,
+                float gain) noexcept;
+    void render(double* left, double* right, uint32_t offset, uint32_t frames,
                 float gain) noexcept;
 
     // Sends CLAP_EVENT_NOTE_END for voices that finished since the last call.
@@ -46,6 +50,9 @@ private:
 
     void noteOn(int16_t key, int16_t channel, int32_t noteId, double velocity) noexcept;
     void noteOff(int16_t key, int16_t channel, int32_t noteId, bool choke) noexcept;
+    template <typename Sample>
+    void renderImpl(Sample* left, Sample* right, uint32_t offset, uint32_t frames,
+                    float gain) noexcept;
 
     Voice _voices[kMaxVoices];
     double _sampleRate = 48000.0;

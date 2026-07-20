@@ -17,7 +17,8 @@ The suite is also an *active* diagnostic instrument:
   probes **22 host-side extensions** at `init()`, logging which are present and which are not —
   a one-glance host fingerprint.
 - Every plugin monitors the host against the **calling-sequence contracts** of the CLAP spec —
-  see [Host contract checking](#host-contract-checking) below.
+  see [Host contract checking](#host-contract-checking) below; the complete list of probed
+  violations lives in [docs/host-contract-violations.md](docs/host-contract-violations.md).
 - All log output of an instance flows through a per-instance `LogBuffer` (in addition to
   `clap.log`/stderr), which the GUI flavor renders live in its log pane.
 
@@ -58,9 +59,9 @@ lives in [docs/host-contract-violations.md](docs/host-contract-violations.md).
 
 | Plugin | id (`org.clap-validator.…`) | Extensions exposed | Deliberately absent | DSP |
 |---|---|---|---|---|
-| Validator Effect | `effect` | audio-ports (stereo in/out), params, state, latency, tail, render, remote-controls | **note-ports** | gain |
+| Validator Effect | `effect` | audio-ports (stereo in/out, **32+64-bit, common sample size required**), params, state, latency, tail, render, remote-controls | **note-ports** | gain |
 | Validator NoteFX | `notefx` | note-ports (1 in / 1 out), params, state | **audio-ports — the extension is not implemented at all** | note transpose |
-| Validator Synth | `synth` | note-ports (1 in), audio-ports (1 stereo out), params, state, voice-info | latency, tail | 8-voice sine |
+| Validator Synth | `synth` | note-ports (1 in), audio-ports (1 stereo out, **supports + prefers 64-bit**), params, state, voice-info | latency, tail | 8-voice sine |
 | Validator Sidechain Synth | `sidechain-synth` | note-ports (1 in), audio-ports (**non-main** stereo in "Sidechain" + main stereo out), params, state, remote-controls | latency, tail, voice-info | sine gated by sidechain level |
 | Validator MultiOut Gen | `multiout-gen` | audio-ports, audio-ports-config ("Stereo": 1 out; "Multi Out": main + 4 aux), params, state | note-ports | distinct sine pitch per port |
 | Validator MultiOut FX | `multiout-fx` | audio-ports (1 stereo in), audio-ports-config ("Stereo": 1 out; "Multi Out": main + 2 aux), params, state | note-ports | input fan-out |
@@ -83,6 +84,14 @@ Host-testing traps baked in:
 - **MultiOut Gen/FX**: port ids stay stable across configs (the main out keeps id 0 in both);
   each Gen output port emits a distinct pitch (A3, C#4, E4, G4, A4), so routing is verifiable
   by ear or meter. `select()` correctly fails while the plugin is active.
+- **Sample sizes (32/64-bit)**: deliberately heterogeneous. The Effect supports both formats
+  but declares `REQUIRES_COMMON_SAMPLE_SIZE` (mixing in/out formats is flagged as P10, yet
+  tolerated with conversion); the Synth **supports and prefers** 64-bit; the Sidechain Synth
+  and every other flavor are 32-bit-only — hosts must check per plugin *and per port*. Handing
+  a 64-bit buffer to a non-supporting port is flagged (P09) and the block rejected.
+- **Process-status hints**: the voice-based synths return `CLAP_PROCESS_SLEEP` when no voice
+  is sounding; MultiOut Gen returns `CLAP_PROCESS_CONTINUE_IF_NOT_QUIET` while its Level is
+  zero — hosts get both silence-optimization paths to prove they wake the plugins again.
 - **AudioPortsZero**: the counterpart to NoteFX — the audio-ports extension is *present* but
   reports zero ports in both directions.
 - **Slow**: `state save/load` block for the `Slowness` parameter's duration (default 2 s),

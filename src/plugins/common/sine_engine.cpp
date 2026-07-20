@@ -103,8 +103,9 @@ void SineEngine::handleEvent(const clap_event_header* header) noexcept {
     }
 }
 
-void SineEngine::render(float* left, float* right, uint32_t offset, uint32_t frames,
-                        float gain) noexcept {
+template <typename Sample>
+void SineEngine::renderImpl(Sample* left, Sample* right, uint32_t offset, uint32_t frames,
+                            float gain) noexcept {
     for (auto& voice : _voices) {
         if (!voice.active)
             continue;
@@ -119,7 +120,8 @@ void SineEngine::render(float* left, float* right, uint32_t offset, uint32_t fra
                 }
                 envelope *= voice.releaseGain;
             }
-            const auto sample = static_cast<float>(std::sin(voice.phase)) * envelope;
+            const auto sample =
+                static_cast<Sample>(std::sin(voice.phase) * static_cast<double>(envelope));
             voice.phase += voice.phaseInc;
             if (voice.phase >= kTwoPi)
                 voice.phase -= kTwoPi;
@@ -128,6 +130,16 @@ void SineEngine::render(float* left, float* right, uint32_t offset, uint32_t fra
                 right[i] += sample;
         }
     }
+}
+
+void SineEngine::render(float* left, float* right, uint32_t offset, uint32_t frames,
+                        float gain) noexcept {
+    renderImpl(left, right, offset, frames, gain);
+}
+
+void SineEngine::render(double* left, double* right, uint32_t offset, uint32_t frames,
+                        float gain) noexcept {
+    renderImpl(left, right, offset, frames, gain);
 }
 
 void SineEngine::emitNoteEnds(const clap_output_events* out, uint32_t time) noexcept {

@@ -108,21 +108,23 @@ void Plugin::requestCallback() noexcept {
 void Plugin::captureActivateSnapshot(uint32_t minFrames, uint32_t maxFrames) noexcept {
     _contract.setFrameBounds(minFrames, maxFrames);
 
-    std::vector<uint32_t> inputChannels;
-    std::vector<uint32_t> outputChannels;
+    std::vector<ContractMonitor::PortInfo> inputPorts;
+    std::vector<ContractMonitor::PortInfo> outputPorts;
     if (auto* ports = extensionProvider<ext::AudioPortsProvider>(CLAP_EXT_AUDIO_PORTS)) {
         for (int direction = 0; direction < 2; ++direction) {
             const bool isInput = direction == 0;
-            auto& channels = isInput ? inputChannels : outputChannels;
+            auto& layout = isInput ? inputPorts : outputPorts;
             const uint32_t count = ports->audioPortCount(isInput);
             for (uint32_t i = 0; i < count; ++i) {
                 clap_audio_port_info info{};
-                channels.push_back(ports->audioPortInfo(i, isInput, &info) ? info.channel_count
-                                                                           : 0);
+                if (ports->audioPortInfo(i, isInput, &info))
+                    layout.push_back({info.channel_count, info.flags});
+                else
+                    layout.push_back({0, 0});
             }
         }
     }
-    _contract.setPortLayout(std::move(inputChannels), std::move(outputChannels));
+    _contract.setPortLayout(std::move(inputPorts), std::move(outputPorts));
 
     std::vector<clap_id> paramIds;
     if (auto* params = extensionProvider<ext::ParamsProvider>(CLAP_EXT_PARAMS)) {
@@ -263,10 +265,11 @@ void Plugin::sReset(const clap_plugin* p) {
     self->reset();
 }
 
-// Data contracts on the clap_process struct (P01..P08 minus the flush check).
+// Data contracts on the clap_process struct (P01..P10 minus the flush check).
 // All reports are throttled by the monitor, so a host that is persistently
 // wrong does not flood the log from the audio thread.
-void Plugin::checkProcessContracts(const clap_process* process) noexcept {
+bool Plugin::checkProcessContracts(const clap_process* process) noexcept {
+    bool processable = true;
     char detail[160];
 
     if (process->frames_count < _contract.minFrames() ||
@@ -283,35 +286,73 @@ void Plugin::checkProcessContracts(const clap_process* process) noexcept {
         _contract.report(Violation::P02, "process()", detail);
     }
 
-    const auto& inputChannels = _contract.inputChannels();
-    const auto& outputChannels = _contract.outputChannels();
-    if (process->audio_inputs_count != inputChannels.size() ||
-        process->audio_outputs_count != outputChannels.size()) {
+    const auto& inputPorts = _contract.inputPorts();
+    const auto& outputPorts = _contract.outputPorts();
+    if (process->audio_inputs_count != inputPorts.size() ||
+        process->audio_outputs_count != outputPorts.size()) {
         std::snprintf(detail, sizeof(detail),
                       "buffer counts in=%u/out=%u do not match declared ports in=%zu/out=%zu",
                       process->audio_inputs_count, process->audio_outputs_count,
-                      inputChannels.size(), outputChannels.size());
+                      inputPorts.size(), outputPorts.size());
         _contract.report(Violation::P05, "process()", detail);
     } else {
-        for (uint32_t i = 0; i < process->audio_inputs_count; ++i)
-            if (process->audio_inputs[i].channel_count != inputChannels[i]) {
-                std::snprintf(detail, sizeof(detail),
-                              "input port %u has channel_count=%u, declared %u", i,
-                              process->audio_inputs[i].channel_count, inputChannels[i]);
-                _contract.report(Violation::P05, "process()", detail);
+        // Buffer format bookkeeping across all ports for P09/P10. A port
+        // requires 32-bit unless it declared CLAP_AUDIO_PORT_SUPPORTS_64BITS;
+        // if any port declared REQUIRES_COMMON_SAMPLE_SIZE, mixing 32/64
+        // across the ports of this plugin is illegal.
+        bool anyRequiresCommon = false;
+        bool saw32 = false;
+        bool saw64 = false;
+        for (int direction = 0; direction < 2; ++direction) {
+            const bool isInput = direction == 0;
+            const auto& layout = isInput ? inputPorts : outputPorts;
+            const auto* buffers = isInput ? process->audio_inputs : process->audio_outputs;
+            const uint32_t count =
+                isInput ? process->audio_inputs_count : process->audio_outputs_count;
+            for (uint32_t i = 0; i < count; ++i) {
+                const auto& buffer = buffers[i];
+                const char* dirName = isInput ? "input" : "output";
+                if (buffer.channel_count != layout[i].channels) {
+                    std::snprintf(detail, sizeof(detail),
+                                  "%s port %u has channel_count=%u, declared %u", dirName, i,
+                                  buffer.channel_count, layout[i].channels);
+                    _contract.report(Violation::P05, "process()", detail);
+                }
+                anyRequiresCommon |=
+                    (layout[i].flags & CLAP_AUDIO_PORT_REQUIRES_COMMON_SAMPLE_SIZE) != 0;
+                const bool has64 = buffer.data64 != nullptr;
+                const bool has32 = buffer.data32 != nullptr;
+                if (!has32 && !has64) {
+                    std::snprintf(detail, sizeof(detail),
+                                  "%s port %u has neither data32 nor data64", dirName, i);
+                    _contract.report(Violation::P09, "process()", detail);
+                    processable = false;
+                    continue;
+                }
+                if (has64 && !(layout[i].flags & CLAP_AUDIO_PORT_SUPPORTS_64BITS)) {
+                    std::snprintf(detail, sizeof(detail),
+                                  "%s port %u got a 64-bit buffer but did not declare "
+                                  "CLAP_AUDIO_PORT_SUPPORTS_64BITS",
+                                  dirName, i);
+                    _contract.report(Violation::P09, "process()", detail);
+                    // Without an accompanying 32-bit buffer the plugin has
+                    // nothing it could legally read/write on this port.
+                    if (!has32)
+                        processable = false;
+                }
+                // Effective sample size of this buffer: 64 when the host set
+                // data64 (a plugin supporting 64 bits must use it then).
+                (has64 ? saw64 : saw32) = true;
             }
-        for (uint32_t i = 0; i < process->audio_outputs_count; ++i)
-            if (process->audio_outputs[i].channel_count != outputChannels[i]) {
-                std::snprintf(detail, sizeof(detail),
-                              "output port %u has channel_count=%u, declared %u", i,
-                              process->audio_outputs[i].channel_count, outputChannels[i]);
-                _contract.report(Violation::P05, "process()", detail);
-            }
+        }
+        if (anyRequiresCommon && saw32 && saw64)
+            _contract.report(Violation::P10, "process()",
+                             "mixed 32/64-bit buffers although a port declared "
+                             "CLAP_AUDIO_PORT_REQUIRES_COMMON_SAMPLE_SIZE");
     }
-
     const clap_input_events* events = process->in_events;
     if (!events || !events->size || !events->get)
-        return;
+        return processable;
     const uint32_t count = events->size(events);
     uint32_t previousTime = 0;
     for (uint32_t i = 0; i < count; ++i) {
@@ -351,6 +392,7 @@ void Plugin::checkProcessContracts(const clap_process* process) noexcept {
             }
         }
     }
+    return processable;
 }
 
 clap_process_status Plugin::sProcess(const clap_plugin* p, const clap_process* process) {
@@ -377,7 +419,8 @@ clap_process_status Plugin::sProcess(const clap_plugin* p, const clap_process* p
                       process->frames_count);
         self->logToHost(CLAP_LOG_INFO, buf);
     }
-    self->checkProcessContracts(process);
+    if (!self->checkProcessContracts(process))
+        return CLAP_PROCESS_ERROR; // a port had no usable buffer (P09)
     return self->process(process);
 }
 

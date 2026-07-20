@@ -112,7 +112,9 @@ private:
     void logLifecycle(const char* message) noexcept;
     void logHostInfo() noexcept; // hostinfo.cpp — runs for every plugin at init()
     void captureActivateSnapshot(uint32_t minFrames, uint32_t maxFrames) noexcept;
-    void checkProcessContracts(const clap_process* process) noexcept;
+    // Returns false when a port has no buffer the plugin could legally use
+    // (P09) — the block must then be rejected instead of dereferencing null.
+    bool checkProcessContracts(const clap_process* process) noexcept;
 
     clap_plugin _plugin{};
     const clap_host* _host = nullptr;

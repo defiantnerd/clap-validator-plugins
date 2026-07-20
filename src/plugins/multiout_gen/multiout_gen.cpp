@@ -239,7 +239,11 @@ clap_process_status MultiOutGenPlugin::process(const clap_process* process) noex
         }
         _phases[port] = phase;
     }
-    return CLAP_PROCESS_CONTINUE;
+    // With Level at zero the output is entirely quiet: hint that the host may
+    // suspend processing (a param event raising Level must wake it again).
+    // The voice-based synth flavors return CLAP_PROCESS_SLEEP instead, so the
+    // suite exercises both host-side silence optimizations.
+    return level > 0.0f ? CLAP_PROCESS_CONTINUE : CLAP_PROCESS_CONTINUE_IF_NOT_QUIET;
 }
 
 } // namespace cvp

@@ -71,6 +71,8 @@ processing (`start_processing`), walked back by `stop_processing` /
 | P06 | event `header.size < sizeof(clap_event_header)` (malformed) | events.h | Tolerate — event skipped |
 | P07 | `params.flush()` concurrent with a running `process()` | params.h: "must not be called concurrently to clap_plugin->process()" | Tolerate |
 | P08 | `CLAP_EVENT_PARAM_VALUE`/`PARAM_MOD` targeting an unknown `param_id` | params.h event routing | Tolerate — event ignored |
+| P09 | a port got a 64-bit buffer without having declared `CLAP_AUDIO_PORT_SUPPORTS_64BITS`, or has neither `data32` nor `data64` | audio-buffer.h: "Either data32 or data64 pointer will be set"; audio-ports.h: 64-bit is opt-in per port | Reject (`CLAP_PROCESS_ERROR`) when the port has no buffer the plugin could legally use; Tolerate when a usable 32-bit buffer accompanies it |
+| P10 | mixed 32/64-bit buffers although a port declared `CLAP_AUDIO_PORT_REQUIRES_COMMON_SAMPLE_SIZE` | audio-ports.h: "64 bits audio or 32 bits audio, but it can't be mixed" | Tolerate — the effect processes with conversion |
 
 ## T — Thread contracts (`thread-check.h` + per-function annotations)
 

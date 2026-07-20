@@ -28,7 +28,8 @@ const clap_plugin_descriptor SynthPlugin::descriptor = {
     .support_url = "https://github.com/defiantnerd/clap-validator-plugins/issues",
     .version = "0.1.0",
     .description = "8-voice polyphonic sine synthesizer with note-ports in, stereo audio out, "
-                   "params, state and voice-info. Deliberately absent: latency, tail.",
+                   "params, state and voice-info. The output port supports AND prefers 64-bit "
+                   "processing. Deliberately absent: latency, tail.",
     .features = kFeatures,
 };
 
@@ -70,7 +71,11 @@ bool SynthPlugin::audioPortInfo(uint32_t index, bool isInput,
         return false;
     info->id = 0;
     std::snprintf(info->name, sizeof(info->name), "Output");
-    info->flags = CLAP_AUDIO_PORT_IS_MAIN;
+    // Supports AND prefers 64-bit: a host honoring the preference should hand
+    // this port data64 buffers (the sidechain synth stays 32-bit-only as the
+    // deliberate contrast).
+    info->flags =
+        CLAP_AUDIO_PORT_IS_MAIN | CLAP_AUDIO_PORT_SUPPORTS_64BITS | CLAP_AUDIO_PORT_PREFERS_64BITS;
     info->channel_count = 2;
     info->port_type = CLAP_PORT_STEREO;
     info->in_place_pair = CLAP_INVALID_ID;
@@ -198,13 +203,25 @@ clap_process_status SynthPlugin::process(const clap_process* process) noexcept {
     if (process->audio_outputs_count < 1 || process->audio_outputs[0].channel_count < 1)
         return CLAP_PROCESS_ERROR;
 
+    // The output port supports both sample sizes: render into whichever the
+    // host provided (a missing buffer is reported as P09 by the base class).
     auto& out = process->audio_outputs[0];
+    if (out.data64)
+        return processTyped(process, out.data64[0],
+                            out.channel_count > 1 ? out.data64[1] : nullptr);
+    if (out.data32)
+        return processTyped(process, out.data32[0],
+                            out.channel_count > 1 ? out.data32[1] : nullptr);
+    return CLAP_PROCESS_ERROR;
+}
+
+template <typename Sample>
+clap_process_status SynthPlugin::processTyped(const clap_process* process, Sample* left,
+                                              Sample* right) noexcept {
     const uint32_t frames = process->frames_count;
-    float* left = out.data32[0];
-    float* right = out.channel_count > 1 ? out.data32[1] : nullptr;
-    std::memset(left, 0, frames * sizeof(float));
+    std::memset(left, 0, frames * sizeof(Sample));
     if (right)
-        std::memset(right, 0, frames * sizeof(float));
+        std::memset(right, 0, frames * sizeof(Sample));
 
     const auto gain = static_cast<float>(_volume.load(std::memory_order_relaxed));
 

@@ -21,7 +21,7 @@ class LogBuffer;
 // counter here.
 #define CVP_VIOLATION_CODES(X)                                                                     \
     X(L01) X(L02) X(L03) X(L04) X(L05) X(L06) X(L07) X(L08) X(L09) X(L10) X(L11) X(L12) X(L13)     \
-    X(P01) X(P02) X(P03) X(P04) X(P05) X(P06) X(P07) X(P08)                                        \
+    X(P01) X(P02) X(P03) X(P04) X(P05) X(P06) X(P07) X(P08) X(P09) X(P10)                          \
     X(T01) X(T02) X(T03) X(T04)                                                                    \
     X(G01) X(G02) X(G03) X(G04)                                                                    \
     X(AP01) X(NP01) X(AC01) X(CA01) X(LT01) X(VI01) X(R01) X(PL01) X(SR01)
@@ -92,15 +92,19 @@ public:
     uint32_t minFrames() const noexcept { return _minFrames; }
     uint32_t maxFrames() const noexcept { return _maxFrames; }
 
-    // Channel count per declared port, captured at activate (the layout must
-    // not change while active, so audio-thread reads are safe).
-    void setPortLayout(std::vector<uint32_t> inputChannels,
-                       std::vector<uint32_t> outputChannels) noexcept {
-        _inputChannels = std::move(inputChannels);
-        _outputChannels = std::move(outputChannels);
+    // Channel count + declared flags per port, captured at activate (the
+    // layout must not change while active, so audio-thread reads are safe).
+    struct PortInfo {
+        uint32_t channels;
+        uint32_t flags; // CLAP_AUDIO_PORT_* as declared by the plugin
+    };
+    void setPortLayout(std::vector<PortInfo> inputPorts,
+                       std::vector<PortInfo> outputPorts) noexcept {
+        _inputPorts = std::move(inputPorts);
+        _outputPorts = std::move(outputPorts);
     }
-    const std::vector<uint32_t>& inputChannels() const noexcept { return _inputChannels; }
-    const std::vector<uint32_t>& outputChannels() const noexcept { return _outputChannels; }
+    const std::vector<PortInfo>& inputPorts() const noexcept { return _inputPorts; }
+    const std::vector<PortInfo>& outputPorts() const noexcept { return _outputPorts; }
 
     // Valid param ids, captured at activate for the P08 event check (same
     // stability argument as the port layout).
@@ -180,8 +184,8 @@ private:
 
     uint32_t _minFrames = 0;
     uint32_t _maxFrames = 0;
-    std::vector<uint32_t> _inputChannels;
-    std::vector<uint32_t> _outputChannels;
+    std::vector<PortInfo> _inputPorts;
+    std::vector<PortInfo> _outputPorts;
     std::vector<clap_id> _paramIds;
 
     bool _steadyValid = false; // audio-thread only

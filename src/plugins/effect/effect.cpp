@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <type_traits>
 
 #include "wrapper/stream.h"
 
@@ -29,8 +30,9 @@ const clap_plugin_descriptor EffectPlugin::descriptor = {
     .support_url = "https://github.com/defiantnerd/clap-validator-plugins/issues",
     .version = "0.1.0",
     .description = "Stereo gain effect exposing audio-ports, params, state, latency, tail and "
-                   "render — and deliberately no note-ports. The Latency parameter changes the "
-                   "reported latency at runtime.",
+                   "render — and deliberately no note-ports. Both ports support 64-bit "
+                   "processing but require a common sample size. The Latency parameter changes "
+                   "the reported latency at runtime.",
     .features = kFeatures,
 };
 
@@ -66,7 +68,10 @@ bool EffectPlugin::audioPortInfo(uint32_t index, bool isInput,
         return false;
     info->id = 0;
     std::snprintf(info->name, sizeof(info->name), "%s", isInput ? "Input" : "Output");
-    info->flags = CLAP_AUDIO_PORT_IS_MAIN;
+    // Both sample sizes are accepted, but in and out must use the same one —
+    // a host mixing them is reported as P10 (and tolerated with conversion).
+    info->flags = CLAP_AUDIO_PORT_IS_MAIN | CLAP_AUDIO_PORT_SUPPORTS_64BITS |
+                  CLAP_AUDIO_PORT_REQUIRES_COMMON_SAMPLE_SIZE;
     info->channel_count = 2;
     info->port_type = CLAP_PORT_STEREO;
     info->in_place_pair = 0;
@@ -265,19 +270,35 @@ clap_process_status EffectPlugin::process(const clap_process* process) noexcept 
             applyParamEvent(process->in_events->get(process->in_events, i));
     }
 
-    const float gain =
-        static_cast<float>(std::pow(10.0, _gainDb.load(std::memory_order_relaxed) / 20.0));
+    const double gain = std::pow(10.0, _gainDb.load(std::memory_order_relaxed) / 20.0);
 
     const auto& in = process->audio_inputs[0];
     auto& out = process->audio_outputs[0];
     const uint32_t frames = process->frames_count;
     const uint32_t channels =
         in.channel_count < out.channel_count ? in.channel_count : out.channel_count;
-    for (uint32_t ch = 0; ch < channels; ++ch) {
-        const float* src = in.data32[ch];
-        float* dst = out.data32[ch];
+    if ((!in.data32 && !in.data64) || (!out.data32 && !out.data64))
+        return CLAP_PROCESS_ERROR; // reported as P09 by the base class
+
+    // Both ports support 32- and 64-bit. The declared REQUIRES_COMMON_SAMPLE_
+    // SIZE makes mixed formats illegal (reported as P10 by the base class),
+    // but they are still processed with conversion so audio keeps flowing.
+    const auto applyGain = [&](const auto* src, auto* dst) {
         for (uint32_t i = 0; i < frames; ++i)
-            dst[i] = src[i] * gain;
+            dst[i] = static_cast<std::remove_reference_t<decltype(dst[0])>>(src[i] * gain);
+    };
+    for (uint32_t ch = 0; ch < channels; ++ch) {
+        if (out.data64) {
+            if (in.data64)
+                applyGain(in.data64[ch], out.data64[ch]);
+            else
+                applyGain(in.data32[ch], out.data64[ch]);
+        } else {
+            if (in.data64)
+                applyGain(in.data64[ch], out.data32[ch]);
+            else
+                applyGain(in.data32[ch], out.data32[ch]);
+        }
     }
     return CLAP_PROCESS_CONTINUE;
 }

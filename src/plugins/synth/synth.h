@@ -58,6 +58,9 @@ protected:
     bool voiceInfo(clap_voice_info* info) noexcept override;
 
 private:
+    template <typename Sample>
+    clap_process_status processTyped(const clap_process* process, Sample* left,
+                                     Sample* right) noexcept;
     enum ParamId : clap_id {
         kParamVolume = 0,
     };
