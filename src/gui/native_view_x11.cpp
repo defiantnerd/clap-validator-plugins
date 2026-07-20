@@ -142,6 +142,8 @@ private:
         _background = allocColor(0xEE, 0xEE, 0xEE);
         _trackColor = allocColor(0xC0, 0xC0, 0xC0);
         _fillColor = allocColor(0x4A, 0x78, 0xB0);
+        _okColor = allocColor(0x20, 0x8C, 0x3C);
+        _errorColor = allocColor(0xC8, 0x20, 0x20);
         _textColor = BlackPixel(_display, screen);
 
         _window = XCreateSimpleWindow(_display, static_cast<Window>(_parentXid), 0, 0, width,
@@ -424,6 +426,11 @@ private:
             _logVersion = version;
             _dirty = true;
         }
+        const uint32_t violations = _model.guiViolationTotal();
+        if (violations != _lastViolations) {
+            _lastViolations = violations;
+            _dirty = true;
+        }
         // Param values may change from host automation — redraw when moved.
         for (size_t i = 0; i < _params.size(); ++i) {
             const double value = _model.guiParamValue(_params[i].id);
@@ -515,6 +522,23 @@ private:
                         static_cast<int>(std::strlen(label)));
         }
 
+        // Host-contract badge, left-aligned in the button row.
+        {
+            int x, y, w, h;
+            buttonRect(&x, &y, &w, &h);
+            char badge[64] = "contract: OK";
+            const uint32_t violations = _model.guiViolationTotal();
+            if (violations > 0) {
+                char code[8] = "";
+                _model.guiLastViolation(code, sizeof(code));
+                std::snprintf(badge, sizeof(badge), "contract: %u violation%s [last %s]",
+                              violations, violations == 1 ? "" : "s", code);
+            }
+            XSetForeground(_display, _gc, violations > 0 ? _errorColor : _okColor);
+            XDrawString(_display, buffer, _gc, pad, y + h / 2 + fontAscent / 2, badge,
+                        static_cast<int>(std::strlen(badge)));
+        }
+
         // Log pane: white background, last lines that fit, bottom-anchored.
         const int logTop =
             static_cast<int>(scaled(logTopFor(static_cast<uint32_t>(_params.size()))));
@@ -562,6 +586,8 @@ private:
     Atom _atomClipboard = None, _atomUtf8 = None, _atomTargets = None;
     std::string _clipboardText;
     unsigned long _background = 0, _trackColor = 0, _fillColor = 0, _textColor = 0;
+    unsigned long _okColor = 0, _errorColor = 0;
+    uint32_t _lastViolations = ~0u; // force first badge render
     bool _windowDead = false;
     bool _dirty = true;
     int _dragParam = -1;

@@ -216,6 +216,11 @@ private:
                                       nullptr, inst, nullptr);
         SendMessageW(_copyButton, WM_SETFONT, reinterpret_cast<WPARAM>(_uiFont), TRUE);
 
+        _contractBadge = CreateWindowExW(0, L"STATIC", L"contract: OK",
+                                         WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, 0, 0, 10, 10,
+                                         _hwnd, nullptr, inst, nullptr);
+        SendMessageW(_contractBadge, WM_SETFONT, reinterpret_cast<WPARAM>(_monoFont), TRUE);
+
         _logEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
                                    WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE |
                                        ES_AUTOVSCROLL | ES_READONLY,
@@ -249,6 +254,8 @@ private:
         const int buttonW = static_cast<int>(scaled(110));
         const int buttonH = static_cast<int>(scaled(kButtonRowHeight - 4));
         MoveWindow(_copyButton, width - pad - buttonW, buttonTop, buttonW, buttonH, TRUE);
+        MoveWindow(_contractBadge, pad, buttonTop + (buttonH - transportLineH) / 2,
+                   width - buttonW - 3 * pad, transportLineH, TRUE);
 
         const int logTop =
             static_cast<int>(scaled(logTopFor(static_cast<uint32_t>(_params.size()))));
@@ -334,6 +341,20 @@ private:
         SetWindowTextW(_transportLines[0], toWide(transport.line1.c_str()).c_str());
         SetWindowTextW(_transportLines[1], toWide(transport.line2.c_str()).c_str());
 
+        const uint32_t violations = _model.guiViolationTotal();
+        if (violations != _lastViolations) {
+            _lastViolations = violations;
+            char badge[64] = "contract: OK";
+            if (violations > 0) {
+                char code[8] = "";
+                _model.guiLastViolation(code, sizeof(code));
+                std::snprintf(badge, sizeof(badge), "contract: %u violation%s [last %s]",
+                              violations, violations == 1 ? "" : "s", code);
+            }
+            SetWindowTextW(_contractBadge, toWide(badge).c_str());
+            InvalidateRect(_contractBadge, nullptr, TRUE); // repaint with new color
+        }
+
         char text[96];
         for (size_t i = 0; i < _params.size(); ++i) {
             const auto& desc = _params[i];
@@ -386,6 +407,15 @@ private:
                 HIWORD(wParam) == BN_CLICKED)
                 self->copyLog();
             return 0;
+        case WM_CTLCOLORSTATIC:
+            if (reinterpret_cast<HWND>(lParam) == self->_contractBadge) {
+                HDC dc = reinterpret_cast<HDC>(wParam);
+                SetTextColor(dc, self->_lastViolations > 0 ? RGB(200, 32, 32)
+                                                           : RGB(32, 140, 60));
+                SetBkMode(dc, TRANSPARENT);
+                return reinterpret_cast<LRESULT>(GetSysColorBrush(COLOR_BTNFACE));
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
         case WM_SIZE:
             self->_widthPx = LOWORD(lParam);
             self->_heightPx = HIWORD(lParam);
@@ -408,6 +438,7 @@ private:
     HWND _hwnd = nullptr;
     HWND _transportLines[2] = {nullptr, nullptr};
     HWND _copyButton = nullptr;
+    HWND _contractBadge = nullptr;
     HWND _logEdit = nullptr;
     HFONT _uiFont = nullptr;
     HFONT _monoFont = nullptr;
@@ -415,6 +446,7 @@ private:
     bool _scaleExplicit = false;
     uint32_t _widthPx = 0;
     uint32_t _heightPx = 0;
+    uint32_t _lastViolations = ~0u; // force first badge render
     uint64_t _logVersion = ~0ull;
 };
 

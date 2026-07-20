@@ -84,6 +84,8 @@ protected:
 
     // GuiModel
     GuiModel::TransportInfo guiTransport() noexcept override;
+    uint32_t guiViolationTotal() noexcept override;
+    bool guiLastViolation(char* buf, uint32_t capacity) noexcept override;
     uint32_t guiParamCount() noexcept override;
     bool guiParamDesc(uint32_t index, ParamDesc* desc) noexcept override;
     double guiParamValue(clap_id paramId) noexcept override;

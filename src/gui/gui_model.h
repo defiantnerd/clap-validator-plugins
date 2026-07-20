@@ -58,6 +58,11 @@ public:
 
     // Latest transport snapshot. [any-thread]
     virtual TransportInfo guiTransport() noexcept = 0;
+
+    // Host-contract badge: total violations observed and the most recent
+    // stable code ("L03"); returns false while none occurred. [any-thread]
+    virtual uint32_t guiViolationTotal() noexcept = 0;
+    virtual bool guiLastViolation(char* buf, uint32_t capacity) noexcept = 0;
 };
 
 } // namespace cvp

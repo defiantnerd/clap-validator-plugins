@@ -467,6 +467,14 @@ GuiModel::TransportInfo GuiPlugin::guiTransport() noexcept {
 
 // ---- GuiModel ----
 
+uint32_t GuiPlugin::guiViolationTotal() noexcept {
+    return contract().total();
+}
+
+bool GuiPlugin::guiLastViolation(char* buf, uint32_t capacity) noexcept {
+    return contract().lastViolation(buf, capacity);
+}
+
 uint32_t GuiPlugin::guiParamCount() noexcept {
     return kParamCount;
 }

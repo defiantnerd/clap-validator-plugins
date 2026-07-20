@@ -6,6 +6,7 @@
 
 #import <Cocoa/Cocoa.h>
 
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,7 @@ constexpr CGFloat kValueWidth = 90.0;
     NSMutableArray<NSTextField*>* _valueLabels;
     NSTextField* _transportLine1;
     NSTextField* _transportLine2;
+    NSTextField* _contractBadge;
     NSButton* _copyButton;
     NSScrollView* _logScroll;
     NSTextView* _logView;
@@ -106,6 +108,11 @@ constexpr CGFloat kValueWidth = 90.0;
     _copyButton.bezelStyle = NSBezelStyleRounded;
     [self addSubview:_copyButton];
 
+    _contractBadge = [NSTextField labelWithString:@"contract: OK"];
+    _contractBadge.font = [NSFont monospacedDigitSystemFontOfSize:11 weight:NSFontWeightMedium];
+    _contractBadge.textColor = [NSColor systemGreenColor];
+    [self addSubview:_contractBadge];
+
     _logView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100)];
     _logView.editable = NO;
     _logView.richText = NO;
@@ -158,6 +165,8 @@ constexpr CGFloat kValueWidth = 90.0;
         cvp::NativeView::buttonRowTopFor(static_cast<uint32_t>(_params.size()));
     _copyButton.frame = NSMakeRect(width - pad - 110, buttonTop, 110,
                                    cvp::NativeView::kButtonRowHeight - 4);
+    _contractBadge.frame =
+        NSMakeRect(pad, buttonTop + 5, width - 110 - 3 * pad, 17);
 
     const CGFloat logTop = cvp::NativeView::logTopFor(static_cast<uint32_t>(_params.size()));
     _logScroll.frame = NSMakeRect(pad, logTop, width - 2 * pad, height - logTop - pad);
@@ -198,6 +207,20 @@ constexpr CGFloat kValueWidth = 90.0;
     const cvp::TransportLines transport = cvp::formatTransport(_model->guiTransport());
     _transportLine1.stringValue = [NSString stringWithUTF8String:transport.line1.c_str()];
     _transportLine2.stringValue = [NSString stringWithUTF8String:transport.line2.c_str()];
+
+    const uint32_t violations = _model->guiViolationTotal();
+    if (violations == 0) {
+        _contractBadge.stringValue = @"contract: OK";
+        _contractBadge.textColor = [NSColor systemGreenColor];
+    } else {
+        char code[8] = "";
+        _model->guiLastViolation(code, sizeof(code));
+        char badge[64];
+        std::snprintf(badge, sizeof(badge), "contract: %u violation%s [last %s]", violations,
+                      violations == 1 ? "" : "s", code);
+        _contractBadge.stringValue = [NSString stringWithUTF8String:badge];
+        _contractBadge.textColor = [NSColor systemRedColor];
+    }
 
     char text[96];
     for (size_t i = 0; i < _params.size(); ++i) {
