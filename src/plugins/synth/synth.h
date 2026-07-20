@@ -4,6 +4,7 @@
 
 #include "plugins/common/sine_engine.h"
 #include "wrapper/ext/audio_ports.h"
+#include "wrapper/ext/note_name.h"
 #include "wrapper/ext/note_ports.h"
 #include "wrapper/ext/params.h"
 #include "wrapper/ext/state.h"
@@ -18,6 +19,7 @@ namespace cvp {
 // params, state, voice-info. Deliberately absent: latency, tail.
 class SynthPlugin final : public Plugin,
                           public ext::AudioPortsProvider,
+                          public ext::NoteNameProvider,
                           public ext::NotePortsProvider,
                           public ext::ParamsProvider,
                           public ext::StateProvider,
@@ -56,6 +58,10 @@ protected:
 
     // ext::VoiceInfoProvider
     bool voiceInfo(clap_voice_info* info) noexcept override;
+
+    // ext::NoteNameProvider
+    uint32_t noteNameCount() noexcept override;
+    bool noteNameGet(uint32_t index, clap_note_name* noteName) noexcept override;
 
 private:
     template <typename Sample>

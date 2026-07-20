@@ -61,8 +61,8 @@ lives in [docs/host-contract-violations.md](docs/host-contract-violations.md).
 |---|---|---|---|---|
 | Validator Effect | `effect` | audio-ports (stereo in/out, **32+64-bit, common sample size required**), params, state, latency, tail, render, remote-controls | **note-ports** | gain |
 | Validator NoteFX | `notefx` | note-ports (1 in / 1 out), params, state | **audio-ports — the extension is not implemented at all** | note transpose |
-| Validator Synth | `synth` | note-ports (1 in), audio-ports (1 stereo out, **supports + prefers 64-bit**), params (Volume **polyphonically modulatable** per note/key/channel), state, voice-info | latency, tail | 8-voice sine |
-| Validator Sidechain Synth | `sidechain-synth` | note-ports (1 in), audio-ports (**non-main** stereo in "Sidechain" + main stereo out), params, state, remote-controls | latency, tail, voice-info | sine gated by sidechain level |
+| Validator Synth | `synth` | note-ports (1 in), audio-ports (1 stereo out, **supports + prefers 64-bit**), params (Volume **polyphonically modulatable** per note/key/channel), state, voice-info, **note-name** (every C key + one channel-scoped entry) | latency, tail | 8-voice sine |
+| Validator Sidechain Synth | `sidechain-synth` | note-ports (1 in), audio-ports (**non-main** stereo in "Sidechain" + main stereo out), params, state, remote-controls, **note-name** (C major triad, a different set than the Synth's) | latency, tail, voice-info | sine gated by sidechain level |
 | Validator MultiOut Gen | `multiout-gen` | audio-ports, audio-ports-config ("Stereo": 1 out; "Multi Out": main + 4 aux), params, state | note-ports | distinct sine pitch per port |
 | Validator MultiOut FX | `multiout-fx` | audio-ports (1 stereo in), audio-ports-config ("Stereo": 1 out; "Multi Out": main + 2 aux), params, state | note-ports | input fan-out |
 | Validator AudioPortsZero | `audioports-zero` | **audio-ports with 0 ports** in both directions, params, state | note-ports | none (sleeps) |

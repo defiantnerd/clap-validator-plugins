@@ -37,6 +37,7 @@ add_library(clap-validator-plugins MODULE
     src/wrapper/ext/audio_ports_config.cpp
     src/wrapper/ext/configurable_audio_ports.cpp
     src/wrapper/ext/latency.cpp
+    src/wrapper/ext/note_name.cpp
     src/wrapper/ext/note_ports.cpp
     src/wrapper/ext/params.cpp
     src/wrapper/ext/preset_load.cpp

@@ -28,7 +28,8 @@ const clap_plugin_descriptor SynthPlugin::descriptor = {
     .support_url = "https://github.com/defiantnerd/clap-validator-plugins/issues",
     .version = "0.1.0",
     .description = "8-voice polyphonic sine synthesizer with note-ports in, stereo audio out, "
-                   "params, state and voice-info. The output port supports AND prefers 64-bit "
+                   "params, state, voice-info and note-name (every C key named, plus one "
+                   "channel-scoped entry). The output port supports AND prefers 64-bit "
                    "processing. Deliberately absent: latency, tail.",
     .features = kFeatures,
 };
@@ -42,6 +43,8 @@ SynthPlugin::SynthPlugin(const clap_host* host) : Plugin(&descriptor, host) {
                      static_cast<ext::AudioPortsProvider*>(this));
     provideExtension(CLAP_EXT_NOTE_PORTS, ext::notePortsVtable(),
                      static_cast<ext::NotePortsProvider*>(this));
+    provideExtension(CLAP_EXT_NOTE_NAME, ext::noteNameVtable(),
+                     static_cast<ext::NoteNameProvider*>(this));
     provideExtension(CLAP_EXT_PARAMS, ext::paramsVtable(), static_cast<ext::ParamsProvider*>(this));
     provideExtension(CLAP_EXT_STATE, ext::stateVtable(), static_cast<ext::StateProvider*>(this));
     provideExtension(CLAP_EXT_VOICE_INFO, ext::voiceInfoVtable(),
@@ -205,6 +208,35 @@ bool SynthPlugin::stateLoad(const clap_istream* stream) noexcept {
 }
 
 // ---- voice-info ----
+
+// ---- note-name ----
+// Every C key gets a wildcard-scoped name (port -1, channel -1), plus one
+// channel-scoped entry so hosts prove they respect the channel filter: the
+// A4 name only applies on channel 0.
+
+uint32_t SynthPlugin::noteNameCount() noexcept {
+    return 12; // 11 C keys (C-1 .. C9) + the channel-scoped A4
+}
+
+bool SynthPlugin::noteNameGet(uint32_t index, clap_note_name* noteName) noexcept {
+    if (index >= noteNameCount())
+        return false;
+    std::memset(noteName, 0, sizeof(*noteName));
+    if (index < 11) {
+        // MIDI key 0 is C-1; every 12th key is another C.
+        noteName->key = static_cast<int16_t>(index * 12);
+        noteName->port = -1;
+        noteName->channel = -1;
+        std::snprintf(noteName->name, sizeof(noteName->name), "C%d (Validator Synth)",
+                      static_cast<int>(index) - 1);
+        return true;
+    }
+    noteName->key = 69; // A4
+    noteName->port = 0;
+    noteName->channel = 0; // only on channel 1 — tests host channel scoping
+    std::snprintf(noteName->name, sizeof(noteName->name), "A4 440 Hz (channel 1 only)");
+    return true;
+}
 
 bool SynthPlugin::voiceInfo(clap_voice_info* info) noexcept {
     info->voice_count = SineEngine::kMaxVoices;

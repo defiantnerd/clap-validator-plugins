@@ -30,7 +30,8 @@ const clap_plugin_descriptor SidechainSynthPlugin::descriptor = {
     .support_url = "https://github.com/defiantnerd/clap-validator-plugins/issues",
     .version = "0.1.0",
     .description = "Sine synthesizer whose output is gated by a non-main stereo sidechain "
-                   "input — tests hosts' audio-into-instrument routing.",
+                   "input — tests hosts' audio-into-instrument routing. Note names label the "
+                   "C major triad as suggested gate-test material.",
     .features = kFeatures,
 };
 
@@ -41,6 +42,8 @@ const clap_plugin* SidechainSynthPlugin::create(const clap_host* host) {
 SidechainSynthPlugin::SidechainSynthPlugin(const clap_host* host) : Plugin(&descriptor, host) {
     provideExtension(CLAP_EXT_AUDIO_PORTS, ext::audioPortsVtable(),
                      static_cast<ext::AudioPortsProvider*>(this));
+    provideExtension(CLAP_EXT_NOTE_NAME, ext::noteNameVtable(),
+                     static_cast<ext::NoteNameProvider*>(this));
     provideExtension(CLAP_EXT_NOTE_PORTS, ext::notePortsVtable(),
                      static_cast<ext::NotePortsProvider*>(this));
     provideExtension(CLAP_EXT_PARAMS, ext::paramsVtable(), static_cast<ext::ParamsProvider*>(this));
@@ -103,6 +106,34 @@ bool SidechainSynthPlugin::notePortInfo(uint32_t index, bool isInput,
     info->supported_dialects = CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI;
     info->preferred_dialect = CLAP_NOTE_DIALECT_CLAP;
     std::snprintf(info->name, sizeof(info->name), "Note In");
+    return true;
+}
+
+// ---- note-name ----
+// A deliberately different set from the Validator Synth: hosts must query
+// names per plugin, not cache them per bundle. The C major triad around
+// middle C is the suggested test material for the sidechain gating.
+
+uint32_t SidechainSynthPlugin::noteNameCount() noexcept {
+    return 3;
+}
+
+bool SidechainSynthPlugin::noteNameGet(uint32_t index, clap_note_name* noteName) noexcept {
+    static constexpr struct {
+        int16_t key;
+        const char* name;
+    } kNames[] = {
+        {60, "Gate Test C4"},
+        {64, "Gate Test E4"},
+        {67, "Gate Test G4"},
+    };
+    if (index >= 3)
+        return false;
+    std::memset(noteName, 0, sizeof(*noteName));
+    noteName->key = kNames[index].key;
+    noteName->port = 0;
+    noteName->channel = -1;
+    std::snprintf(noteName->name, sizeof(noteName->name), "%s", kNames[index].name);
     return true;
 }
 

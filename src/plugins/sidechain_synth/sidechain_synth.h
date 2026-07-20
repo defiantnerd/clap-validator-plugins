@@ -4,6 +4,7 @@
 
 #include "plugins/common/sine_engine.h"
 #include "wrapper/ext/audio_ports.h"
+#include "wrapper/ext/note_name.h"
 #include "wrapper/ext/note_ports.h"
 #include "wrapper/ext/params.h"
 #include "wrapper/ext/remote_controls.h"
@@ -24,6 +25,7 @@ namespace cvp {
 // verifiable — the sidechain signal gates the synth output.
 class SidechainSynthPlugin final : public Plugin,
                                    public ext::AudioPortsProvider,
+                                   public ext::NoteNameProvider,
                                    public ext::NotePortsProvider,
                                    public ext::ParamsProvider,
                                    public ext::StateProvider,
@@ -46,6 +48,10 @@ protected:
     // ext::NotePortsProvider
     uint32_t notePortCount(bool isInput) noexcept override;
     bool notePortInfo(uint32_t index, bool isInput, clap_note_port_info* info) noexcept override;
+
+    // ext::NoteNameProvider
+    uint32_t noteNameCount() noexcept override;
+    bool noteNameGet(uint32_t index, clap_note_name* noteName) noexcept override;
 
     // ext::ParamsProvider
     uint32_t paramCount() noexcept override;
