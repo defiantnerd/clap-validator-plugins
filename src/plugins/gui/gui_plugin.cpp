@@ -278,10 +278,8 @@ bool GuiPlugin::guiCreate(const char* api, bool isFloating) noexcept {
     logToHost(CLAP_LOG_INFO, buf);
     if (isFloating || !api || std::strcmp(api, kPlatformApi) != 0)
         return false;
-    if (_view) {
-        logToHost(CLAP_LOG_HOST_MISBEHAVING, "gui: create() called while a GUI already exists");
+    if (_view) // double-create is reported as G02 by the wrapper
         return false;
-    }
     _view = createNativeView(*this);
     if (_view)
         _view->setScale(_scale);
@@ -289,9 +287,8 @@ bool GuiPlugin::guiCreate(const char* api, bool isFloating) noexcept {
 }
 
 void GuiPlugin::guiDestroy() noexcept {
+    // destroy-without-create is reported as G03 by the wrapper
     logToHost(CLAP_LOG_INFO, "gui: destroy()");
-    if (!_view)
-        logToHost(CLAP_LOG_HOST_MISBEHAVING, "gui: destroy() called without a GUI");
     _view.reset();
 }
 
@@ -314,7 +311,7 @@ bool GuiPlugin::guiGetSize(uint32_t* width, uint32_t* height) noexcept {
     if (_view) {
         _view->getSize(width, height);
     } else {
-        logToHost(CLAP_LOG_HOST_MISBEHAVING, "gui: get_size() called without create()");
+        // unreachable via the vtable (wrapper rejects G01); defensive fallback
         *width = static_cast<uint32_t>(NativeView::kDefaultWidth * _scale);
         *height = static_cast<uint32_t>(NativeView::minHeightFor(kParamCount) * _scale);
     }
@@ -368,25 +365,22 @@ bool GuiPlugin::guiSetSize(uint32_t width, uint32_t height) noexcept {
 
 bool GuiPlugin::guiSetParent(const clap_window* window) noexcept {
     logToHost(CLAP_LOG_INFO, "gui: set_parent()");
-    if (!_view) {
-        logToHost(CLAP_LOG_HOST_MISBEHAVING, "gui: set_parent() called without create()");
+    if (!_view) // unreachable via the vtable (wrapper rejects G01)
         return false;
-    }
     return _view->attach(window);
 }
 
+// Floating-only methods on our embedded GUI are rejected as G04 by the
+// wrapper before reaching these; defensive no-ops.
 bool GuiPlugin::guiSetTransient(const clap_window*) noexcept {
-    logToHost(CLAP_LOG_HOST_MISBEHAVING,
-              "gui: set_transient() called on an embedded GUI (floating-only API)");
+    logToHost(CLAP_LOG_DEBUG, "gui: set_transient()");
     return false;
 }
 
 void GuiPlugin::guiSuggestTitle(const char* title) noexcept {
-    char buf[192];
-    std::snprintf(buf, sizeof(buf),
-                  "gui: suggest_title('%s') called on an embedded GUI (floating-only API)",
-                  title ? title : "null");
-    logToHost(CLAP_LOG_HOST_MISBEHAVING, buf);
+    char buf[128];
+    std::snprintf(buf, sizeof(buf), "gui: suggest_title('%s')", title ? title : "null");
+    logToHost(CLAP_LOG_DEBUG, buf);
 }
 
 bool GuiPlugin::guiShow() noexcept {

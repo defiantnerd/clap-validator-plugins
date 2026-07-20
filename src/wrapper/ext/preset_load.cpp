@@ -17,6 +17,17 @@ PresetLoadProvider* provider(const clap_plugin* p) {
 bool sFromLocation(const clap_plugin* p, uint32_t locationKind, const char* location,
                    const char* loadKey) {
     CVP_ASSERT_MAIN_THREAD(Plugin::from(p));
+    auto& contract = Plugin::from(p)->contract();
+    // Location semantics follow the preset-discovery kinds (PL01): a FILE
+    // load needs a path; a PLUGIN load must pass location = NULL.
+    if (locationKind == CLAP_PRESET_DISCOVERY_LOCATION_FILE && !location) {
+        contract.report(Violation::PL01, "preset_load.from_location()",
+                        "FILE location kind with a null location");
+        return false;
+    }
+    if (locationKind == CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN && location)
+        contract.report(Violation::PL01, "preset_load.from_location()",
+                        "PLUGIN location kind with a non-null location (must be null)");
     return provider(p)->presetLoadFromLocation(locationKind, location, loadKey);
 }
 

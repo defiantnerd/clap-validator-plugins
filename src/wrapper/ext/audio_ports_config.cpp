@@ -23,6 +23,14 @@ bool sGet(const clap_plugin* p, uint32_t index, clap_audio_ports_config* config)
 
 bool sSelect(const clap_plugin* p, clap_id configId) {
     CVP_ASSERT_MAIN_THREAD(Plugin::from(p));
+    auto& contract = Plugin::from(p)->contract();
+    // [main-thread & plugin-deactivated] — a config switch while active would
+    // change the port layout under a running engine (audio-ports-config.h).
+    if (contract.isActive()) {
+        contract.report(Violation::AC01, "audio_ports_config.select()",
+                        "called while active (only legal when deactivated)");
+        return false;
+    }
     return provider(p)->audioPortsConfigSelect(configId);
 }
 

@@ -37,8 +37,21 @@ bool sTextToValue(const clap_plugin* p, clap_id paramId, const char* text, doubl
 }
 
 void sFlush(const clap_plugin* p, const clap_input_events* in, const clap_output_events* out) {
-    // Contract is [audio-thread while active, main-thread otherwise]; neither
-    // side is assertable without knowing the host's intent, so no check here.
+    auto* plugin = Plugin::from(p);
+    auto& contract = plugin->contract();
+    // Must never overlap a running process() call (params.h).
+    if (contract.isInProcess())
+        contract.report(Violation::P07, "params.flush()", "called concurrently with process()");
+    // [active ? audio-thread : main-thread] — only decidable when the host
+    // provides clap.thread-check; heuristics would misfire here.
+    if (contract.isActive()) {
+        if (plugin->threadChecker().confirmedNotAudioThread())
+            contract.report(Violation::T03, "params.flush()",
+                            "must be on the audio thread while the plugin is active");
+    } else if (plugin->threadChecker().confirmedNotMainThread()) {
+        contract.report(Violation::T03, "params.flush()",
+                        "must be on the main thread while the plugin is inactive");
+    }
     provider(p)->paramsFlush(in, out);
 }
 
