@@ -101,7 +101,10 @@ Host-testing traps baked in:
   a 64-bit buffer to a non-supporting port is flagged (P09) and the block rejected.
 - **Process-status hints**: the voice-based synths return `CLAP_PROCESS_SLEEP` when no voice
   is sounding; MultiOut Gen returns `CLAP_PROCESS_CONTINUE_IF_NOT_QUIET` while its Level is
-  zero — hosts get both silence-optimization paths to prove they wake the plugins again.
+  zero; the Effect expresses its `clap.tail` through the return code — `CONTINUE` while the
+  input is live, `TAIL` for the declared tail window once it falls silent, `SLEEP` after the
+  tail has elapsed. Hosts get all three silence-optimization paths and must wake the plugins
+  again on events or returning audio.
 - **AudioPortsZero**: the counterpart to NoteFX — the audio-ports extension is *present* but
   reports zero ports in both directions.
 - **Slow**: `state save/load` block for the `Slowness` parameter's duration (default 2 s),

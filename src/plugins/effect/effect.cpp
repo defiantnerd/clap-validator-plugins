@@ -283,9 +283,14 @@ clap_process_status EffectPlugin::process(const clap_process* process) noexcept 
     // Both ports support 32- and 64-bit. The declared REQUIRES_COMMON_SAMPLE_
     // SIZE makes mixed formats illegal (reported as P10 by the base class),
     // but they are still processed with conversion so audio keeps flowing.
+    // The gain pass doubles as the input-silence scan for the tail logic.
+    bool inputSilent = true;
     const auto applyGain = [&](const auto* src, auto* dst) {
-        for (uint32_t i = 0; i < frames; ++i)
+        for (uint32_t i = 0; i < frames; ++i) {
+            if (src[i] != 0)
+                inputSilent = false;
             dst[i] = static_cast<std::remove_reference_t<decltype(dst[0])>>(src[i] * gain);
+        }
     };
     for (uint32_t ch = 0; ch < channels; ++ch) {
         if (out.data64) {
@@ -300,7 +305,18 @@ clap_process_status EffectPlugin::process(const clap_process* process) noexcept 
                 applyGain(in.data32[ch], out.data32[ch]);
         }
     }
-    return CLAP_PROCESS_CONTINUE;
+
+    // clap.tail behavior expressed through the return code: while the input
+    // is live the host must keep processing (CONTINUE); once it falls silent
+    // the declared tail window applies (TAIL — the host consults
+    // clap_plugin_tail.get() to know how long); after the tail has elapsed
+    // the plugin may be suspended until events or input return (SLEEP).
+    if (!inputSilent) {
+        _silentInputSamples = 0;
+        return CLAP_PROCESS_CONTINUE;
+    }
+    _silentInputSamples += frames;
+    return _silentInputSamples <= tail() ? CLAP_PROCESS_TAIL : CLAP_PROCESS_SLEEP;
 }
 
 } // namespace cvp

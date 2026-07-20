@@ -83,6 +83,7 @@ private:
     std::atomic<double> _latencySamples{0.0};
     std::atomic<double> _tailSeconds{0.0};
     clap_plugin_render_mode _renderMode = CLAP_RENDER_REALTIME;
+    uint64_t _silentInputSamples = 0; // audio-thread only; drives TAIL/SLEEP
 };
 
 } // namespace cvp
