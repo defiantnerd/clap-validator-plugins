@@ -22,6 +22,22 @@ abort in debug builds.
 spec-safe return value; *Tolerate* = logged, then handled as gracefully as
 possible so the session keeps running.
 
+## Severity mapping
+
+Every log line carries a `clap_log_severity`, passed verbatim to the host's
+`clap.log` extension. When the host implements no `clap.log`, the stderr
+fallback prints the same severity as a tag (`[HOST!]`, `[WRN]`, `[INF]`, …),
+and the GUI log pane always shows it per line.
+
+| Severity | Used for |
+|---|---|
+| `CLAP_LOG_HOST_MISBEHAVING` (`[HOST!]`) | every violation in this catalog, the non-empty destroy summary, and thread findings confirmed by the host's own `clap.thread-check` |
+| `CLAP_LOG_WARNING` (`[WRN]`) | *heuristic* thread mismatches (host lacks `clap.thread-check` — possibly a legal host choice, so they are also kept out of the counters and badge) and tolerated-but-notable events that are not spec violations (e.g. a rejected port configuration) |
+| `CLAP_LOG_INFO` (`[INF]`) | the clean destroy summary (`no host contract violations observed`) and lifecycle traces |
+
+Nothing below a definite spec violation ever uses `HOST_MISBEHAVING` — a
+harness can treat any `[HOST!]` line as an authoritative finding.
+
 ## E — DSO entry & factories (`entry.h`, `factory/plugin-factory.h`)
 
 These occur before/without a plugin instance, so they are carried by a
@@ -81,11 +97,12 @@ processing (`start_processing`), walked back by `stop_processing` /
 ## T — Thread contracts (`thread-check.h` + per-function annotations)
 
 T01/T02 come from the existing ThreadChecker. Findings confirmed by the
-host's own `clap.thread-check` extension are *authoritative* (counted +
-debug-assert); without that extension, main-thread checks fall back to an
-init-thread heuristic that is logged but never counted (a host may legally
-drive the plugin from another thread), and audio-thread checks are skipped.
-T03/T04 only fire with an authoritative answer.
+host's own `clap.thread-check` extension are *authoritative* (logged at
+`HOST_MISBEHAVING`, counted, debug-assert); without that extension,
+main-thread checks fall back to an init-thread heuristic that is logged at
+`CLAP_LOG_WARNING` but never counted (a host may legally drive the plugin
+from another thread), and audio-thread checks are skipped. T03/T04 only
+fire with an authoritative answer.
 
 | Code | Violation | Spec | Response |
 |---|---|---|---|

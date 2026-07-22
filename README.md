@@ -41,7 +41,11 @@ calling-sequence rules from the CLAP 1.2.10 headers, always on (release builds i
 
 Every finding is logged with a **stable code** (`seq [L03] activate(): called while already
 active`) at `CLAP_LOG_HOST_MISBEHAVING`, throttled per code so audio-path detectors can't
-flood the log. Violating calls are refused only where the spec makes rejection safe;
+flood the log. Severities are meaningful: `HOST_MISBEHAVING` is reserved for definite spec
+violations, heuristic thread findings and notable-but-legal events log at `WARNING`, and
+the stderr fallback tags every line (`[HOST!]`, `[WRN]`, `[INF]`) so severity survives even
+without a host `clap.log` (see the
+[severity mapping](docs/host-contract-violations.md#severity-mapping)). Violating calls are refused only where the spec makes rejection safe;
 everything else is tolerated so the session keeps running. Detections surface four ways:
 
 1. the **log** (GUI pane, host `clap.log`, stderr);
