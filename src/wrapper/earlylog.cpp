@@ -29,7 +29,8 @@ Ring& ring() {
 } // namespace
 
 void append(clap_log_severity severity, const char* message) noexcept {
-    std::fprintf(stderr, "[clap-validator-plugin] entry: %s\n", message);
+    std::fprintf(stderr, "[clap-validator-plugin] [%s] entry: %s\n", severityTag(severity),
+                 message);
     auto& r = ring();
     std::lock_guard<std::mutex> lock(r.mutex);
     if (r.count >= kMaxLines)

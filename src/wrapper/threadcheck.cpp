@@ -57,12 +57,16 @@ void ThreadChecker::report(const char* function, const char* expected,
                   "clap-validator-plugin: '%s' was called outside the [%s-thread] contract%s",
                   function, expected,
                   authoritative ? "" : " (heuristic: host lacks clap.thread-check)");
+    // A heuristic mismatch may be a legal host choice — only an authoritative
+    // clap.thread-check answer justifies the HOST_MISBEHAVING severity.
+    const clap_log_severity severity =
+        authoritative ? CLAP_LOG_HOST_MISBEHAVING : CLAP_LOG_WARNING;
     if (_logBuffer)
-        _logBuffer->append(CLAP_LOG_HOST_MISBEHAVING, msg);
+        _logBuffer->append(severity, msg);
     if (_hostLog && _hostLog->log)
-        _hostLog->log(_host, CLAP_LOG_HOST_MISBEHAVING, msg);
+        _hostLog->log(_host, severity, msg);
     else
-        std::fprintf(stderr, "%s\n", msg);
+        std::fprintf(stderr, "[clap-validator-plugin] [%s] %s\n", severityTag(severity), msg);
     // Only authoritative findings enter the violation registry — a heuristic
     // mismatch may be a legal host choice, and the badge must not lie.
     if (authoritative && _monitor)

@@ -5,9 +5,7 @@
 
 namespace cvp {
 
-namespace {
-
-const char* severityTag(clap_log_severity severity) {
+const char* severityTag(clap_log_severity severity) noexcept {
     switch (severity) {
     case CLAP_LOG_DEBUG:
         return "DBG";
@@ -27,6 +25,8 @@ const char* severityTag(clap_log_severity severity) {
         return "???";
     }
 }
+
+namespace {
 
 int64_t nowMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(

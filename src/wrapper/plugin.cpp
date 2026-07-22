@@ -87,7 +87,7 @@ void Plugin::logToHost(clap_log_severity severity, const char* message) noexcept
     if (_hostLog && _hostLog->log)
         _hostLog->log(_host, severity, message);
     else
-        std::fprintf(stderr, "[clap-validator-plugin] %s\n", message);
+        std::fprintf(stderr, "[clap-validator-plugin] [%s] %s\n", severityTag(severity), message);
 }
 
 void Plugin::logLifecycle(const char* message) noexcept {

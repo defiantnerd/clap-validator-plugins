@@ -10,6 +10,11 @@
 
 namespace cvp {
 
+// Short human-readable tag for a CLAP log severity ("INF", "WRN", "HOST!"...).
+// Shared by the log ring and the stderr fallbacks so severity survives even
+// when the host implements no clap.log.
+const char* severityTag(clap_log_severity severity) noexcept;
+
 // Per-plugin-instance log ring. Every logging path of the plugin flows
 // through here FIRST (then on to the host's clap.log extension or stderr),
 // so a GUI log view is guaranteed to see all output.

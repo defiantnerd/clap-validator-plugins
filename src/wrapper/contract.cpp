@@ -35,7 +35,7 @@ void ContractMonitor::emit(clap_log_severity severity, const char* line) noexcep
     if (_hostLog && _hostLog->log)
         _hostLog->log(_host, severity, line);
     else
-        std::fprintf(stderr, "[clap-validator-plugin] %s\n", line);
+        std::fprintf(stderr, "[clap-validator-plugin] [%s] %s\n", severityTag(severity), line);
 }
 
 void ContractMonitor::record(Violation v, const char* line, uint32_t occurrence) noexcept {
